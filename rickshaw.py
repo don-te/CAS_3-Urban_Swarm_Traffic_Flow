@@ -1,41 +1,27 @@
-# agents.py
 import networkx as nx
 import random
 import config as c
-
-class Passenger:
-    def __init__(self, node_id, destination_id):
-        self.node = node_id
-        self.dest = destination_id
-        self.spawn_time = 0
 
 class Rickshaw:
     def __init__(self, agent_id, city_graph):
         self.id = agent_id
         self.city = city_graph
         self.G = city_graph.G
-        
-        # State
         self.current_node = random.choice(list(self.G.nodes()))
         self.target_node = None
         self.destination_node = None
         self.path = []
         self.progress = 0.0
-        
-        # "Snake" State
-        self.passenger = None  # None or Passenger Object
+        self.passenger = None
         self.money = 0
-        self.state = "IDLE"    # IDLE, HUNTING, DELIVERING
+        self.state = "IDLE"
 
     def hunt(self, all_passengers):
-        """Finds the nearest passenger if empty."""
-        if self.passenger or not all_passengers:
-            return
-
-        # Simple Greedy Logic: Find closest passenger by grid distance
+        if self.passenger or not all_passengers: return
+        
+        # Greedy search for nearest passenger
         best_pax = None
         min_dist = float('inf')
-        
         my_pos = self.city.G.nodes[self.current_node]['pos']
         
         for pax in all_passengers:
@@ -52,70 +38,62 @@ class Rickshaw:
 
     def _recalculate_path(self):
         try:
-            # If no specific destination, pick random
+            # CRITICAL: Decrement the load on the OLD target edge if one exists
+            if self.target_node and self.current_node != self.target_node:
+                try:
+                    self.G[self.current_node][self.target_node]['current_load'] -= 1
+                    if self.G[self.current_node][self.target_node]['current_load'] < 0:
+                        self.G[self.current_node][self.target_node]['current_load'] = 0
+                except:
+                    pass
+            
             if not self.destination_node:
                 self.destination_node = random.choice(list(self.G.nodes()))
-                
             self.path = nx.shortest_path(self.G, self.current_node, self.destination_node, weight='weight')
             if len(self.path) > 1:
                 self.target_node = self.path[1]
                 self.progress = 0.0
+                # CRITICAL FIX: Increment load on the edge we're about to traverse
+                self.G[self.current_node][self.target_node]['current_load'] += 1
             else:
                 self.target_node = None
         except:
             self.target_node = None
 
     def move(self, dt):
-        """
-        Moves along the edge.
-        dt: Delta time (seconds) to ensure smooth movement regardless of FPS.
-        """
         if not self.target_node:
-            # Reached Target (Pickup or Dropoff?)
-            if self.state == "HUNTING" and self.current_node == self.destination_node:
-                # Logic handled in main loop (Pickup)
-                pass 
-            elif self.state == "DELIVERING" and self.current_node == self.destination_node:
-                # Logic handled in main loop (Dropoff)
-                pass
-            else:
-                # Just wandering
-                self.destination_node = random.choice(list(self.G.nodes()))
-                self._recalculate_path()
+            # If idle or finished job, pick random
+            if not self.destination_node or self.current_node == self.destination_node:
+                 self.destination_node = random.choice(list(self.G.nodes()))
+                 self._recalculate_path()
             return
 
-        # --- TRAFFIC LOGIC ---
-        # Check load on the edge I am traversing
+        # CRITICAL DEBUG: Check if edge exists BEFORE trying to access it
+        if not self.G.has_edge(self.current_node, self.target_node):
+            # Edge doesn't exist, recalculate
+            self.target_node = None
+            return
+        
         edge_data = self.G.get_edge_data(self.current_node, self.target_node)
         load = edge_data.get('current_load', 0)
-        
-        # Formula: Speed = Base / (1 + Load * Penalty)
         current_speed = c.RICKSHAW_SPEED_BASE / (1 + load * c.TRAFFIC_PENALTY)
         
-        # Advance
         self.progress += current_speed * dt
         
         if self.progress >= 1.0:
-            # Arrived at next node
-            # 1. Update Graph Load (Leaving Edge)
             if self.target_node:
                 self.G[self.current_node][self.target_node]['current_load'] -= 1
-            
             self.current_node = self.target_node
             self.progress = 0.0
-            
             if len(self.path) > 2:
                 self.path.pop(0)
                 self.target_node = self.path[1]
-                # 2. Update Graph Load (Entering Edge)
                 self.G[self.current_node][self.target_node]['current_load'] += 1
             else:
                 self.target_node = None
 
     def get_position(self):
-        # ... (Same interpolation logic as before) ...
-        if not self.target_node:
-            return self.G.nodes[self.current_node]['pos']
+        if not self.target_node: return self.G.nodes[self.current_node]['pos']
         start = self.G.nodes[self.current_node]['pos']
         end = self.G.nodes[self.target_node]['pos']
         lon = start[0] + (end[0] - start[0]) * self.progress

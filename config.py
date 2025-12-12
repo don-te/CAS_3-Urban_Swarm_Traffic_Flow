@@ -18,3 +18,15 @@ COLOR_JAM = (255, 50, 50)             # Red (Traffic Jam)
 RICKSHAW_SPEED_BASE = 1.0     # Blocks per second (approx)
 TRAFFIC_PENALTY = 0.8         # Speed reduction per car on the same street
 SPAWN_RATE = 0.02             # Chance of passenger spawn per tick
+
+# config.py (Append this to your existing file)
+
+# --- DRONE SETTINGS ---
+DRONE_SPEED = 2.0             # Twice as fast as rickshaws
+DRONE_VISION_RADIUS = 150.0   # How far it can see chaos
+DRONE_INTERCEPT_DIST = 10.0   # Distance to "catch" a rickshaw
+FINE_DURATION = 3.0           # Seconds a rickshaw stays frozen after being caught
+
+# --- COLORS ---
+COLOR_DRONE = (255, 255, 255)         # White
+COLOR_DRONE_VISION = (255, 255, 255)  # Faint white outline
