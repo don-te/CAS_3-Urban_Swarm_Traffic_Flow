@@ -23,10 +23,15 @@ def main():
         
         # Update Logic
         engine.update(dt)
-        
-        # Draw Frame
-        vis.draw(engine.city, engine.rickshaws, engine.police, engine.passengers)
 
+      
+        # Draw Frame
+        metrics = {
+            "efficiency": engine.system_efficiency,
+            "entropy": engine.system_entropy
+        }
+        vis.draw(engine.city, engine.rickshaws, engine.police, engine.passengers, metrics)
+        
     pygame.quit()
     sys.exit()
 
