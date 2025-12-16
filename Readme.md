@@ -1,76 +1,56 @@
-Urban Swarm: "Bottleneck" & Homeostasis Update
-1. Overview & Research Goal
+# Urban Swarm: Electronic Homeostasis & Traffic Flow
 
-This update transitions the simulation from a standard grid to a constrained topology to rigorously test the "Self-Organization" capabilities of the swarm.
+> **A Multi-Agent Simulation of Complex Adaptive Systems in Urban Environments**
 
-As noted in the project research (Electronic Homeostasis Research), standard engineered systems are often "fragile to unmodeled conditions". The previous uniform 6x6 grid offered too many alternative routes, masking the agents' inability to handle critical congestion.
+## 🔬 Project Overview
+This project simulates urban traffic as a **Cyber-Physical System (CPS)** to explore the concepts of **Electronic Homeostasis** and **Self-Organization**. 
 
-Key Changes:
+Unlike traditional traffic models that optimize for efficiency, this simulation treats the city as a biological organism. It investigates how a "healthy" global state (Homeostasis) can emerge—or collapse—based purely on the local, decentralized interactions of independent agents (Auto Rickshaws and Police).
 
-    Topology Shift: Replaced the Manhattan Grid with a "Board Game" map (Two Zones + One Bridge).
+**Core Research Question:** Can a decentralized swarm of "greedy" agents self-organize to maintain system equilibrium when faced with critical bottlenecks and regulatory pressure?
 
-    Observability: Implemented a real-time Homeostatic Health HUD to quantify system stability.
+---
 
-2. Architectural Changes
-A. The "Bottleneck" Map (city.py)
+## 🚀 Key Features
 
-We have abandoned the procedural grid generation for a hand-crafted irregular graph.
+### 1. The "Bottleneck" Topology
+We moved away from a standard grid to a **constrained topology** to stress-test the system:
+* **Residential Zone (West) & Commercial Zone (East):** Dense, highly connected clusters.
+* **The Bridge:** A single, high-cost connection between zones. This acts as a "pressure valve" to force congestion and test the limits of the system's flow.
 
-    Residential Zone (West): Dense node cluster (res-X-X).
+### 2. Intelligent Agents
+* **Auto Rickshaws:** Agents driven by "Greed." They use A* pathfinding to hunt passengers and deliver them for profit. Their speed is dynamically penalized by local traffic density (Social Physics).
+* **Police Units:** Regulatory agents that patrol the streets. They actively hunt and fine "speeding" agents (those moving efficiently on empty roads), introducing a negative feedback loop to the system.
 
-    Commercial Zone (East): Dense node cluster (com-X-X).
+### 3. Real-Time "Vital Signs"
+The simulation calculates system health metrics every frame:
+* **System Efficiency (%):** Compares current average speeds against theoretical maximums. A drop below 40% indicates "Ischemia" (Deadlock).
+* **Entropy (Variance):** Measures the distribution of load. High entropy means the system is failing to self-organize (e.g., one jammed bridge vs. empty streets).
 
-    The Bridge: A single, high-cost connection between the zones.
+---
 
-    Why: This forces all inter-zone traffic into a single point of failure, creating the high-load conditions necessary to test if the "Traffic Penalty" logic effectively regulates flow.
+## 🛠️ Architecture
 
-B. Logic Engine & Metrics (logic_engine.py)
+The codebase is modular, separating graph topology, agent logic, and visualization.
 
-Added a calculate_metrics() method that runs every tick to assess the city's "vital signs."
+| Module | Description |
+| :--- | :--- |
+| **`main.py`** | Entry point. Manages the game loop, clock, and event handling. |
+| **`city.py`** | Generates the `networkx` graph. Defines the "Board Game" map with residential/commercial zones and the bridge. |
+| **`logic_engine.py`** | The "Brain." Handles spawning, agent updates, and calculates global metrics (Efficiency/Entropy). |
+| **`rickshaw.py`** | Defines the Rickshaw agent, including passenger hunting and traffic-dependent movement physics. |
+| **`police.py`** | Defines the Police agent, featuring a state machine for Patrol vs. Pursuit. |
+| **`visualizer.py`** | `pygame` renderer. Draws the graph, agents, and the HUD overlay. |
+| **`config.py`** | Central configuration for physics constants, colors, and simulation rules. |
 
-    Metric 1: System Efficiency (%)
+---
 
-        Formula: Max Possible SpeedCurrent Average Speed​×100
+## 💻 Installation & Usage
 
-        Meaning: Measures the impact of congestion. If efficiency drops below 40%, the system is effectively "ischemic" (deadlocked).
+### Prerequisites
+* Python 3.8+
+* `pip`
 
-    Metric 2: System Entropy (Variance)
-
-        Formula: Statistical variance of current_load across all road edges.
-
-        Meaning: Measures the distribution of traffic.
-
-            Low Entropy: Traffic is evenly spread (Good Self-Organization).
-
-            High Entropy: Some roads are empty while others are jammed (Poor coordination/Bottlenecking).
-
-C. Visualization (visualizer.py)
-
-    HUD: Added a text overlay displaying Efficiency and Entropy in real-time.
-
-    Visual Debug: The "Bridge" edges are rendered thicker and in a distinct color to visually isolate the bottleneck dynamics.
-
-    Color Coding: The Efficiency text changes color (Green → Orange → Red) to indicate system health status.
-
-3. How to Interpret the Simulation
-
-When running the new build, watch for this specific behavioral loop:
-
-    Phase 1 (Flow): Agents spawn and move freely. Efficiency is ~90%, Entropy is low.
-
-    Phase 2 (The Crunch): Agents randomly select destinations in the opposite zone. They flock to the bridge.
-
-    Phase 3 (Collapse):
-
-        The bridge load spikes.
-
-        Efficiency drops rapidly (as the traffic penalty formula slows bridge crossers to a crawl).
-
-        Entropy spikes (variance between the jammed bridge and empty side streets).
-
-    Phase 4 (Recovery?): This is the test. Does the system clear itself, or does it remain in a permanent jam? (Currently, without Adaptive AI, expect a permanent jam).
-
-4. Setup & Run
-
-No new dependencies are required.
-Bash
+### 1. Install Dependencies
+```bash
+pip install -r requirements.txt
