@@ -16,16 +16,25 @@ def main():
     while running:
         dt = clock.tick(c.FPS) / 1000.0
         
-        # Input
+        # Input Handling
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            
+            # Handle Window Resizing (Maximize/Drag)
+            elif event.type == pygame.VIDEORESIZE:
+                vis.handle_resize(event)
+
+            # Optional: ESC to quit
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
         
         # Update Logic
         engine.update(dt)
         
         # Draw Frame
-        vis.draw(engine.city, engine.rickshaws, engine.police, engine.passengers)
+        vis.draw(engine.city, engine.rickshaws)
 
     pygame.quit()
     sys.exit()

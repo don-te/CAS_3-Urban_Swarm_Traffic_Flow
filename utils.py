@@ -1,16 +1,16 @@
-# utils.py
 import math
 import pygame
 import config as c
 
-def map_coords_to_screen(lat, lon, min_lat, max_lat, min_lon, max_lon):
-    """Converts GPS coordinates to Screen X,Y pixels."""
+# We add screen_w and screen_h args to allow manual overrides
+def map_coords_to_screen(lat, lon, min_lat, max_lat, min_lon, max_lon, screen_w, screen_h):
     if max_lon == min_lon: max_lon += 0.0001
     if max_lat == min_lat: max_lat += 0.0001
     x_pct = (lon - min_lon) / (max_lon - min_lon)
     y_pct = (lat - min_lat) / (max_lat - min_lat)
-    screen_x = 50 + x_pct * (c.SCREEN_WIDTH - 100)
-    screen_y = c.SCREEN_HEIGHT - (50 + y_pct * (c.SCREEN_HEIGHT - 100))
+    
+    screen_x = 50 + x_pct * (screen_w - 100)
+    screen_y = screen_h - (50 + y_pct * (screen_h - 100))
     return int(screen_x), int(screen_y)
 
 def get_angle(start, end):
