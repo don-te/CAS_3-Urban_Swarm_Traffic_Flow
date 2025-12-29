@@ -8,6 +8,7 @@ BG_COLOR = (30, 30, 30)      # Darker Background to contrast Asphalt
 STREET_COLOR = (60, 60, 60)
 NODE_COLOR = (120, 120, 120)
 
+
 # --- ROADS ---
 COLOR_ASPHALT = (50, 50, 50)       # Dark Grey Road
 COLOR_DIVIDER = (200, 200, 0)      # Yellow Center Line
@@ -24,3 +25,15 @@ COLOR_JAM = (255, 50, 50)             # Red
 RICKSHAW_SPEED_BASE = 1.0     
 TRAFFIC_PENALTY = 0.8         
 SPAWN_RATE = 0.02
+# [Keep existing config...]
+
+# --- MECHANICS ---
+RICKSHAW_SPEED_BASE = 1.0     
+TRAFFIC_PENALTY = 0.8         
+SPAWN_RATE = 0.02
+COLLISION_DIST = 0.00005  # ~5 meters in Lat/Lon degrees
+
+# --- SIMULATION SETTINGS ---
+AGENT_COUNT = 20        # Default start
+MIN_AGENTS = 0
+MAX_AGENTS = 100

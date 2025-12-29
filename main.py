@@ -5,10 +5,7 @@ from logic_engine import SimulationEngine
 from visualizer import Visualizer
 
 def main():
-    # 1. Setup Logic
     engine = SimulationEngine()
-    
-    # 2. Setup Display
     vis = Visualizer(engine.bounds)
     clock = pygame.time.Clock()
     
@@ -16,24 +13,24 @@ def main():
     while running:
         dt = clock.tick(c.FPS) / 1000.0
         
-        # Input Handling
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             
-            # Handle Window Resizing (Maximize/Drag)
             elif event.type == pygame.VIDEORESIZE:
                 vis.handle_resize(event)
 
-            # Optional: ESC to quit
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
+
+            # --- HANDLE SLIDER INPUT ---
+            new_agent_count = vis.handle_ui_events(event)
+            if new_agent_count is not None:
+                # If the slider moved, update the engine
+                engine.set_agent_count(new_agent_count)
         
-        # Update Logic
         engine.update(dt)
-        
-        # Draw Frame
         vis.draw(engine.city, engine.rickshaws)
 
     pygame.quit()
