@@ -1,4 +1,3 @@
-# config.py
 
 # --- VISUALS ---
 SCREEN_WIDTH = 1000
@@ -31,7 +30,8 @@ SPAWN_RATE = 0.02
 RICKSHAW_SPEED_BASE = 1.0     
 TRAFFIC_PENALTY = 0.8         
 SPAWN_RATE = 0.02
-COLLISION_DIST = 0.00005  # ~5 meters in Lat/Lon degrees
+COLLISION_DIST = 0.00005      # Crash threshold
+LANE_OFFSET_DEG = 0.000015    # <--- NEW: Real-world lane offset (approx 1.5m)
 
 # --- SIMULATION SETTINGS ---
 AGENT_COUNT = 20        # Default start

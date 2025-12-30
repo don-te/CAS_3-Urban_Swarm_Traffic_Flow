@@ -36,27 +36,29 @@ class SimulationEngine:
                 a1 = self.rickshaws[i]
                 a2 = self.rickshaws[j]
                 
-                # Optimization: Ignore if both are already crashed
                 if a1.is_crashed and a2.is_crashed:
                     continue
+
+                # --- NEW LOGIC: SAFE PASSING ---
+                # If agents are on the same road segment but opposite directions,
+                # they are separated by the divider. Ignore collision.
+                if (a1.current_node == a2.target_node) and (a1.target_node == a2.current_node):
+                    continue
+                # -------------------------------
 
                 pos1 = a1.get_position()
                 pos2 = a2.get_position()
 
-                # Calculate Euclidean distance (in Lat/Lon degrees)
                 dx = pos1[0] - pos2[0]
                 dy = pos1[1] - pos2[1]
                 dist_sq = dx*dx + dy*dy
                 
-                # Check against squared threshold to avoid expensive sqrt()
                 if dist_sq < (c.COLLISION_DIST * c.COLLISION_DIST):
                     a1.is_crashed = True
                     a2.is_crashed = True
 
     def update(self, dt):
-        # 1. Move everyone
         for agent in self.rickshaws:
-            agent.move(dt)
+            agent.move(dt, self.rickshaws)
             
-        # 2. Check collisions after movement
         self.check_collisions()
