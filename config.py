@@ -1,4 +1,3 @@
-
 # --- VISUALS ---
 SCREEN_WIDTH = 1000
 SCREEN_HEIGHT = 1000
@@ -29,11 +28,11 @@ SPAWN_RATE = 0.02
 # --- MECHANICS ---
 RICKSHAW_SPEED_BASE = 1.0     
 TRAFFIC_PENALTY = 0.8         
-SPAWN_RATE = 0.02
-COLLISION_DIST = 0.00005      # Crash threshold
+SPAWN_RATE = 0.02     # Crash threshold
 LANE_OFFSET_DEG = 0.000015    # <--- NEW: Real-world lane offset (approx 1.5m)
 
 # --- SIMULATION SETTINGS ---
 AGENT_COUNT = 20        # Default start
 MIN_AGENTS = 0
 MAX_AGENTS = 100
+

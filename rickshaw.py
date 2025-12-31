@@ -1,15 +1,21 @@
+# rickshaw.py
 import networkx as nx
 import random
 import math 
 import config as c
 
 class Rickshaw:
-    def __init__(self, agent_id, city_graph, final_dest=None):
+    def __init__(self, agent_id, city_graph, start_node=None, final_dest=None):
         self.id = agent_id
         self.city = city_graph
         self.G = city_graph.G
         
-        self.current_node = random.choice(list(self.G.nodes()))
+        # --- DETERMINISTIC SPAWN LOGIC ---
+        if start_node:
+            self.current_node = start_node
+        else:
+            self.current_node = random.choice(list(self.G.nodes()))
+            
         self.target_node = None
         self.destination_node = None
         self.final_dest = final_dest
@@ -17,7 +23,16 @@ class Rickshaw:
         self.path = []
         self.progress = 0.0
         self.current_edge = None 
+        
+        # --- CRASH LOGIC ---
         self.is_crashed = False
+        self.crash_timer = 0.0      
+        self.immunity_timer = 2.0   # Grace period to prevent spawn glitches
+        
+        # --- SPEED VARIANCE ---
+        # Each agent has a unique speed multiplier (90% to 110%)
+        # This prevents "Ghost Truck" stacking where agents move as one unit
+        self.speed_factor = random.uniform(0.9, 1.1)
         
         # Intelligent Navigation
         self.reversing = False          
@@ -75,7 +90,20 @@ class Rickshaw:
         return False
 
     def move(self, dt, all_agents):
-        if self.is_crashed: return
+        # --- Handle Crash Timer ---
+        if self.is_crashed:
+            self.crash_timer -= dt
+            if self.crash_timer <= 0:
+                # WAKE UP
+                self.is_crashed = False
+                self.crash_timer = 0.0
+                self.immunity_timer = 2.0  
+            else:
+                return  # Still crashed, do not move
+
+        # --- Handle Immunity Timer ---
+        if self.immunity_timer > 0:
+            self.immunity_timer -= dt
 
         if not self.reversing and self.target_node:
             if self._detect_blockage(all_agents):
@@ -94,7 +122,10 @@ class Rickshaw:
         edge_data = self.G[self.current_node][self.target_node]
         load = edge_data.get('current_load', 1)
         penalty_factor = 1.0 + (load * c.TRAFFIC_PENALTY)
-        current_speed = c.RICKSHAW_SPEED_BASE / penalty_factor
+        
+        # Apply unique speed factor
+        base_speed = c.RICKSHAW_SPEED_BASE * self.speed_factor
+        current_speed = base_speed / penalty_factor
         
         if self.reversing:
             self.progress -= (current_speed * 0.8) * dt
@@ -120,7 +151,10 @@ class Rickshaw:
                     self.path = []
 
     def get_position(self):
-        """Returns CENTER line position (Visualizer handles lane offsets now)."""
+        """
+        Returns REAL WORLD position including Lane Offset.
+        This fixes the bug where agents crash despite being in different lanes.
+        """
         start_pos = self.G.nodes[self.current_node]['pos']
         
         if not self.target_node: 
@@ -128,11 +162,30 @@ class Rickshaw:
             
         end_pos = self.G.nodes[self.target_node]['pos']
         
-        # Simple Linear Interpolation
+        # 1. Calculate Center Line Position (Linear Interpolation)
         center_lon = start_pos[0] + (end_pos[0] - start_pos[0]) * self.progress
         center_lat = start_pos[1] + (end_pos[1] - start_pos[1]) * self.progress
         
-        return (center_lon, center_lat)
+        # 2. Calculate Lane Offset Vector (Math to shift 'Left')
+        dx = end_pos[0] - start_pos[0]
+        dy = end_pos[1] - start_pos[1]
+        
+        dist = math.hypot(dx, dy)
+        if dist == 0: return (center_lon, center_lat)
+        
+        # Normalize
+        ux = dx / dist
+        uy = dy / dist
+        
+        # Perpendicular Vector (Rotated 90 degrees Counter-Clockwise for Left Hand side)
+        perp_x = -uy
+        perp_y = ux
+        
+        # 3. Apply Offset using Config Degree value
+        offset_lon = center_lon + (perp_x * c.LANE_OFFSET_DEG)
+        offset_lat = center_lat + (perp_y * c.LANE_OFFSET_DEG)
+        
+        return (offset_lon, offset_lat)
 
     def get_visual_angle(self, start_screen, end_screen):
         import math

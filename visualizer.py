@@ -129,3 +129,4 @@ class Visualizer:
         self.agent_slider.draw(self.screen)
 
         pygame.display.flip()
+
