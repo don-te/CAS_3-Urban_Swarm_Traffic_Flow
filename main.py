@@ -11,8 +11,16 @@ def main():
     
     running = True
     while running:
-        dt = clock.tick(c.FPS) / 1000.0
+        # 1. Base Delta Time (Seconds)
+        raw_dt = clock.tick(c.FPS) / 1000.0
         
+        # 2. Apply Speed Multiplier from UI
+        #    If paused, time does not pass for the engine.
+        if vis.is_paused:
+            dt = 0
+        else:
+            dt = raw_dt * vis.sim_speed
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -23,14 +31,21 @@ def main():
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
+                # Optional: Spacebar shortcut for Pause
+                if event.key == pygame.K_SPACE:
+                    vis.toggle_pause()
 
-            # --- HANDLE SLIDER INPUT ---
+            # --- HANDLE UI INPUT ---
+            # Returns new agent count if slider moved, else None
             new_agent_count = vis.handle_ui_events(event)
+            
             if new_agent_count is not None:
-                # If the slider moved, update the engine
                 engine.set_agent_count(new_agent_count)
         
-        engine.update(dt)
+        # 3. Update Engine only if time is passing
+        if dt > 0:
+            engine.update(dt)
+            
         vis.draw(engine.city, engine.rickshaws)
 
     pygame.quit()
