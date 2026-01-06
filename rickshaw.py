@@ -1,24 +1,24 @@
-# rickshaw.py
 import networkx as nx
 import random
 import math 
 import config as c
 
 class Rickshaw:
-    # UPDATED INIT SIGNATURE
     def __init__(self, agent_id, city_graph, start_node=None, final_dest=None, initial_target=None, initial_progress=0.0):
         self.id = agent_id
         self.city = city_graph
         self.G = city_graph.G
         
-        # If start_node is not provided, pick a random one
+        # If start_node is not provided, pick a random one (Fallback)
         self.current_node = start_node if start_node else random.choice(list(self.G.nodes()))
         
-        # --- NEW: SUPPORT FOR EDGE SPAWNING ---
+        # --- EDGE SPAWNING SUPPORT ---
         self.target_node = initial_target
         self.progress = initial_progress
-        self.destination_node = None
+        
+        # "final_dest" is the ultimate goal. "destination_node" is the current trip target.
         self.final_dest = final_dest
+        self.destination_node = final_dest 
         
         self.path = []
         self.current_edge = None 
@@ -32,14 +32,13 @@ class Rickshaw:
         self.crash_timer = 0.0      
         self.immunity_timer = 2.0   
         
-        # Speed Variance
-        self.speed_factor = random.uniform(0.9, 1.1)
-        
-        # Navigation
+        # --- STATE FLAGS ---
+        self.has_arrived = False 
         self.reversing = False          
         self.blacklisted_edges = set() 
 
-    # ... [Keep the rest of the file (move, get_position, etc.) exactly the same] ...
+        # Speed Variance
+        self.speed_factor = random.uniform(0.9, 1.1)
 
     def _enter_edge(self, u, v):
         if self.G.has_edge(u, v):
@@ -54,25 +53,54 @@ class Rickshaw:
                     self.G[u][v]['current_load'] -= 1
             self.current_edge = None
 
-    def _pick_new_destination(self):
-        try:
-            target = self.final_dest if self.final_dest else random.choice(list(self.G.nodes()))
-            if target == self.current_node:
-                self.target_node = None
-                return
-            self.destination_node = target
+    def _pick_new_destination(self, all_agents):
+        """
+        Calculates a path to the destination.
+        If no destination exists yet, picks a random unique one.
+        """
+        # 1. If we already have a fixed final destination, stick to it.
+        if self.final_dest:
+            self.destination_node = self.final_dest
+        else:
+            # Logic to pick a random unique destination if one wasn't assigned at spawn
+            all_nodes = list(self.G.nodes())
+            
+            # Identify destinations currently claimed by OTHERS
+            claimed_destinations = set()
+            if all_agents:
+                for agent in all_agents:
+                    if agent.id != self.id and agent.destination_node:
+                        claimed_destinations.add(agent.destination_node)
 
+            # Filter valid candidates
+            valid_candidates = []
+            for n in all_nodes:
+                if n == self.current_node: continue
+                if n in claimed_destinations: continue
+                valid_candidates.append(n)
+
+            if valid_candidates:
+                self.destination_node = random.choice(valid_candidates)
+            else:
+                # Fallback: just pick any node != current
+                fallback = [n for n in all_nodes if n != self.current_node]
+                if fallback: self.destination_node = random.choice(fallback)
+                else: return # Map has only 1 node?
+
+        # 2. Calculate Path
+        try:
+            # Temporarily block blacklisted edges
             original_weights = {}
             for u, v in self.blacklisted_edges:
                 if self.G.has_edge(u, v):
                     original_weights[(u, v)] = self.G[u][v]['weight']
                     self.G[u][v]['weight'] = 999999.0 
 
-            try:
-                self.path = nx.shortest_path(self.G, self.current_node, self.destination_node, weight='weight')
-            finally:
-                for (u, v), w in original_weights.items():
-                    self.G[u][v]['weight'] = w
+            self.path = nx.shortest_path(self.G, self.current_node, self.destination_node, weight='weight')
+            
+            # Restore weights
+            for (u, v), w in original_weights.items():
+                self.G[u][v]['weight'] = w
             
             if len(self.path) > 1:
                 self.target_node = self.path[1]
@@ -93,6 +121,11 @@ class Rickshaw:
         return False
 
     def move(self, dt, all_agents):
+        # --- 1. STOP IF ARRIVED ---
+        if self.has_arrived:
+            return
+
+        # --- 2. HANDLE TIMERS ---
         if self.is_crashed:
             self.crash_timer -= dt
             if self.crash_timer <= 0:
@@ -105,16 +138,30 @@ class Rickshaw:
         if self.immunity_timer > 0:
             self.immunity_timer -= dt
 
+        # --- 3. DESTINATION CHECK ---
+        if not self.target_node:
+            # Check if we are at the destination
+            if self.destination_node and self.current_node == self.destination_node:
+                self.has_arrived = True
+                return
+            
+            # If not, try to get a path
+            self._pick_new_destination(all_agents)
+            
+            # If still no target (e.g. already at dest or calculation failed)
+            if not self.target_node:
+                if self.destination_node == self.current_node:
+                    self.has_arrived = True
+                return
+
+        # --- 4. MOVEMENT LOGIC ---
+        # Blockage Detection
         if not self.reversing and self.target_node:
             if self._detect_blockage(all_agents):
                 self.reversing = True
                 self.blacklisted_edges.add((self.current_node, self.target_node))
 
-        # --- MODIFIED: Handle case where we spawn without a path but WITH a target ---
-        if not self.target_node:
-            self._pick_new_destination()
-            return
-
+        # Edge Validation
         if not self.G.has_edge(self.current_node, self.target_node):
             self._leave_edge()
             self.target_node = None
@@ -135,7 +182,7 @@ class Rickshaw:
                 self._leave_edge()
                 self.target_node = None 
                 self.path = []
-                self._pick_new_destination()
+                self._pick_new_destination(all_agents)
         else:
             self.progress += current_speed * dt
             if self.progress >= 1.0:
@@ -147,8 +194,10 @@ class Rickshaw:
                     self.target_node = self.path[1]
                     self._enter_edge(self.current_node, self.target_node)
                 else:
+                    # End of path
                     self.target_node = None
-                    self.path = [] # Clear path so we pick a new random dest next frame
+                    self.path = []
+                    # Next frame loop will catch the "Destination Check" and set has_arrived=True
 
     def get_position(self):
         start_pos = self.G.nodes[self.current_node]['pos']
@@ -170,6 +219,7 @@ class Rickshaw:
         ux = dx / dist
         uy = dy / dist
         
+        # Perpendicular Vector (Left Hand Rule)
         perp_x = -uy
         perp_y = ux
         
@@ -179,7 +229,6 @@ class Rickshaw:
         return (offset_lon, offset_lat)
 
     def get_visual_angle(self, start_screen, end_screen):
-        import math
         dx = end_screen[0] - start_screen[0]
         dy = -(end_screen[1] - start_screen[1]) 
         angle = math.atan2(dy, dx)
