@@ -69,7 +69,7 @@ class Visualizer:
         ux, uy = dx / length, dy / length
         return (uy * magnitude, -ux * magnitude)
 
-    def draw(self, city, rickshaws, total_collisions):
+    def draw(self, city, rickshaws, total_collisions): # <--- NEW ARGUMENT
         # Clear
         self.screen.fill((20, 20, 20)) 
         self.sim_surface.fill(c.BG_COLOR)
@@ -81,7 +81,7 @@ class Visualizer:
                 c.SCREEN_WIDTH, c.SCREEN_HEIGHT
             )
 
-        # --- DRAW ROADS ---
+        # --- DRAW SIMULATION (Same as before) ---
         for u, v, data in city.G.edges(data=True):
             u_pos = city.G.nodes[u]['pos']
             v_pos = city.G.nodes[v]['pos']
@@ -90,7 +90,6 @@ class Visualizer:
             pygame.draw.line(self.sim_surface, c.COLOR_ASPHALT, s, e, c.ROAD_WIDTH)
             pygame.draw.line(self.sim_surface, c.COLOR_DIVIDER, s, e, 1)
 
-        # --- DRAW TRAFFIC LOAD (Heatmap) ---
         for u, v, data in city.G.edges(data=True):
             load = data.get('current_load', 0)
             u_pos = city.G.nodes[u]['pos']
@@ -108,20 +107,16 @@ class Visualizer:
                 width = 3
             pygame.draw.line(self.sim_surface, color, start_off, end_off, width)
 
-        # --- DRAW INTERSECTIONS ---
         for n, data in city.G.nodes(data=True):
             pos = data['pos']
             s_pos = to_screen(pos[1], pos[0])
             pygame.draw.circle(self.sim_surface, c.COLOR_ASPHALT, s_pos, int(c.ROAD_WIDTH/2))
 
-        # --- DRAW AGENTS ---
         for agent in rickshaws:
             start_node_pos = city.G.nodes[agent.current_node]['pos']
             s_start = to_screen(start_node_pos[1], start_node_pos[0])
             final_screen_pos = s_start
             angle = 0
-            
-            # Calculate Screen Position
             if agent.target_node:
                 end_node_pos = city.G.nodes[agent.target_node]['pos']
                 s_end = to_screen(end_node_pos[1], end_node_pos[0])
@@ -131,16 +126,9 @@ class Visualizer:
                 final_screen_pos = (cx + ox, cy + oy)
                 angle = agent.get_visual_angle(s_start, s_end)
             
-            # --- DETERMINE COLOR ---
             agent_color = c.COLOR_RICKSHAW_EMPTY
-            
-            if agent.is_crashed:
-                agent_color = c.COLOR_JAM      # Red
-            elif agent.has_arrived:
-                agent_color = (65, 105, 225)   # <--- ROYAL BLUE (Destination Reached)
-            elif agent.reversing:
-                agent_color = (255, 165, 0)    # Orange
-            
+            if agent.is_crashed: agent_color = c.COLOR_JAM
+            elif agent.reversing: agent_color = (255, 165, 0)
             draw_triangle(self.sim_surface, agent_color, final_screen_pos, angle, 12)
 
         # --- BLIT & UI ---
@@ -162,9 +150,11 @@ class Visualizer:
         self.speed_slider.draw(self.screen)
         self.play_btn.draw(self.screen)
         
-        # Stats Section
+        # --- NEW: STATS SECTION ---
+        # Draw a divider line
         pygame.draw.line(self.screen, (60, 60, 60), (20, 300), (self.sidebar_width - 20, 300), 1)
         
+        # Draw Stats Text
         stats_title = self.font_title.render("STATS", True, (150, 150, 150))
         self.screen.blit(stats_title, (25, 320))
         
