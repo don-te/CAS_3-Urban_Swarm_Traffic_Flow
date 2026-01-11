@@ -4,7 +4,9 @@ import math
 import config as c
 
 class Rickshaw:
-    def __init__(self, agent_id, city_graph, start_node=None, final_dest_edge=None, final_dest_progress=None, initial_target=None, initial_progress=0.0):
+    def __init__(self, agent_id, city_graph, start_node=None, 
+                 dest_type="NODE", dest_node=None, dest_edge=None, dest_progress=None, 
+                 initial_target=None, initial_progress=0.0):
         self.id = agent_id
         self.city = city_graph
         self.G = city_graph.G
@@ -12,25 +14,34 @@ class Rickshaw:
         # Start node fallback
         self.current_node = start_node if start_node else random.choice(list(self.G.nodes()))
         
-        # Current Motion
+        # --- DESTINATION CONFIG ---
+        self.dest_type = dest_type  # "NODE" or "EDGE"
+        
+        # Mode A: Node Destination
+        self.final_dest_node = dest_node 
+        
+        # Mode B: Edge Destination
+        self.dest_edge = dest_edge        # Tuple (u, v)
+        self.dest_progress = dest_progress # Float 0.0 - 1.0
+        
+        # Determine Navigation Target (The node A* calculates path to)
+        if self.dest_type == "NODE":
+            self.nav_target_node = self.final_dest_node
+        else:
+            # If Edge destination, we navigate to the START of that edge
+            self.nav_target_node = self.dest_edge[0] if self.dest_edge else None
+
+        # Movement State
         self.target_node = initial_target
         self.progress = initial_progress
-        
-        # --- NEW DESTINATION LOGIC ---
-        # Instead of just a node, we store the target edge and specific progress
-        self.dest_edge = final_dest_edge  # Tuple (u, v)
-        self.dest_progress = final_dest_progress # Float 0.0 - 1.0
-        
-        # Pathfinding target (This is the node we navigate TO to enter the edge)
-        self.nav_target_node = self.dest_edge[0] if self.dest_edge else None
-
         self.path = []
         self.current_edge = None 
         
+        # Initial Edge Entry
         if self.target_node:
             self._enter_edge(self.current_node, self.target_node)
         
-        # --- CRASH & STATE FLAGS ---
+        # State Flags
         self.is_crashed = False
         self.crash_timer = 0.0      
         self.immunity_timer = 2.0   
@@ -52,60 +63,93 @@ class Rickshaw:
                     self.G[u][v]['current_load'] -= 1
             self.current_edge = None
 
+    # rickshaw.py
+
     def _pick_new_destination(self, all_agents):
         """
-        Picks a random edge in the map and a random progress point on it.
+        Picks a new destination (Node or Edge) and calculates the path.
         """
-        # 1. If we don't have a destination edge, pick a random one
-        if not self.dest_edge:
-            all_edges = list(self.G.edges())
-            if not all_edges: return
+        # 1. Decide Destination if not set
+        if not self.nav_target_node:
+            # --- MODIFICATION START ---
+            # Probability Split: 25% Node, 75% Edge
+            # random.random() returns float 0.0 to 1.0
+            if random.random() < 0.25:
+                self.dest_type = "NODE"
+            else:
+                self.dest_type = "EDGE"
             
-            # Pick a random edge (u, v)
-            self.dest_edge = random.choice(all_edges)
-            
-            # Pick a random point on that edge (e.g., 20% to 80% marks)
-            self.dest_progress = random.uniform(0.2, 0.8)
-            
-            # The navigation target is the START node of that edge
-            self.nav_target_node = self.dest_edge[0]
+            all_nodes = list(self.G.nodes())
 
-        # 2. Calculate Path to the START of the target edge
+            if self.dest_type == "NODE":
+                # --- UNIQUE NODE CHECK ---
+                # Gather destination nodes currently claimed by other agents
+                occupied_destinations = set()
+                for agent in all_agents:
+                    if agent.id != self.id and agent.dest_type == "NODE" and agent.final_dest_node:
+                        occupied_destinations.add(agent.final_dest_node)
+
+                # Filter candidates: exclude current node AND occupied nodes
+                candidates = [
+                    n for n in all_nodes 
+                    if n != self.current_node and n not in occupied_destinations
+                ]
+
+                if candidates:
+                    self.final_dest_node = random.choice(candidates)
+                    self.nav_target_node = self.final_dest_node
+                else:
+                    # If all nodes are taken, force fallback to EDGE to prevent stalling
+                    self.dest_type = "EDGE"
+            
+            # Note: This is not an 'elif' because the NODE block might fallback to EDGE
+            if self.dest_type == "EDGE": 
+                all_edges = list(self.G.edges())
+                if all_edges:
+                    self.dest_edge = random.choice(all_edges)
+                    self.dest_progress = random.uniform(0.2, 0.8) # Stop mid-block
+                    self.nav_target_node = self.dest_edge[0]
+            # --- MODIFICATION END ---
+
+        # 2. Calculate Path
+        if not self.nav_target_node: return
+
         try:
-            # Handle edge case: If we are already AT the start of the target edge
-            if self.current_node == self.nav_target_node:
+            # Handle "Already at start of target edge" case
+            if self.dest_type == "EDGE" and self.current_node == self.nav_target_node:
                 self.path = [self.current_node, self.dest_edge[1]]
             else:
-                # Temporarily block blacklisted edges
+                # Standard A*
                 original_weights = {}
                 for u, v in self.blacklisted_edges:
                     if self.G.has_edge(u, v):
                         original_weights[(u, v)] = self.G[u][v]['weight']
                         self.G[u][v]['weight'] = 999999.0
 
-                # Path to the node that STARTS the specific edge
                 self.path = nx.shortest_path(self.G, self.current_node, self.nav_target_node, weight='weight')
                 
                 # Restore weights
                 for (u, v), w in original_weights.items():
                     self.G[u][v]['weight'] = w
-            
-            # Set initial movement
+
+                # A* gets us to the START of the edge. We need to manually add the END of the edge
+                if self.dest_type == "EDGE" and len(self.path) > 0:
+                    if self.path[-1] == self.dest_edge[0]:
+                         self.path.append(self.dest_edge[1])
+
+            # Set Initial Move
             if len(self.path) > 1:
                 self.target_node = self.path[1]
                 self.progress = 0.0
                 self._enter_edge(self.current_node, self.target_node)
-            elif len(self.path) == 1 and self.current_node == self.dest_edge[0]:
-                # We are at the start node, next step is the target edge
-                self.target_node = self.dest_edge[1]
-                self.progress = 0.0
-                self._enter_edge(self.current_node, self.target_node)
             else:
+                # Already at Node Destination
+                if self.dest_type == "NODE" and self.current_node == self.final_dest_node:
+                    self.has_arrived = True
                 self.target_node = None
 
         except (nx.NetworkXNoPath, nx.NodeNotFound):
             self.target_node = None
-
     def _detect_blockage(self, all_agents):
         if not self.target_node: return False
         for other in all_agents:
@@ -131,11 +175,15 @@ class Rickshaw:
 
         # --- DESTINATION CHECK ---
         if not self.target_node:
+            # Immediate arrival check for NODE type
+            if self.dest_type == "NODE" and self.current_node == self.final_dest_node:
+                self.has_arrived = True
+                return
+            
             self._pick_new_destination(all_agents)
             if not self.target_node: return
 
-        # --- MOVEMENT CALCULATION ---
-        # ... (Existing blockage and reversing logic remains mostly the same) ...
+        # --- MOVEMENT LOGIC ---
         if not self.reversing and self.target_node:
              if self._detect_blockage(all_agents):
                 self.reversing = True
@@ -163,39 +211,44 @@ class Rickshaw:
         else:
             self.progress += current_speed * dt
 
-            # --- NEW ARRIVAL CHECK ---
-            # Check if we are on the specific Destination Edge
-            is_dest_edge = (self.current_node == self.dest_edge[0] and self.target_node == self.dest_edge[1])
-            
-            if is_dest_edge and self.progress >= self.dest_progress:
-                # We have arrived at the specific point!
-                self.has_arrived = True
-                self.progress = self.dest_progress # Snap to exact spot
-                self._leave_edge() # Technically we "leave" traffic flow when parked
-                return
+            # --- ARRIVAL CHECK: EDGE TYPE ---
+            # Check if we are currently traversing the specific destination edge
+            if self.dest_type == "EDGE":
+                is_dest_edge = (self.current_node == self.dest_edge[0] and self.target_node == self.dest_edge[1])
+                if is_dest_edge and self.progress >= self.dest_progress:
+                    self.has_arrived = True
+                    self.progress = self.dest_progress # Snap to exact spot
+                    self._leave_edge() # Parked agents leave the traffic load
+                    return
 
-            # Standard node transition
+            # --- NODE TRANSITION ---
             if self.progress >= 1.0:
                 self._leave_edge()
                 self.current_node = self.target_node
                 self.progress = 0.0
                 
-                # Advance path
-                if len(self.path) > 2:
-                    self.path.pop(0)
-                    self.target_node = self.path[1]
-                    self._enter_edge(self.current_node, self.target_node)
-                elif len(self.path) == 2:
-                    # We just finished the previous edge, now entering the FINAL edge (dest edge)
-                    self.path.pop(0)
-                    self.target_node = self.dest_edge[1] # Ensure we target the end of dest edge
-                    self._enter_edge(self.current_node, self.target_node)
+                # ARRIVAL CHECK: NODE TYPE
+                if self.dest_type == "NODE" and self.current_node == self.final_dest_node:
+                    self.has_arrived = True
+                    self.target_node = None
+                    return
+
+                # --- CRITICAL FIX: Safe Path Advancement ---
+                if len(self.path) > 1:
+                    self.path.pop(0) # Remove the node we just left
+                    
+                    # Check if there is a next node
+                    if len(self.path) > 1:
+                        self.target_node = self.path[1]
+                        self._enter_edge(self.current_node, self.target_node)
+                    else:
+                        # End of path reached
+                        self.target_node = None
+                        self.path = []
                 else:
-                    # Should be caught by is_dest_edge logic, but safety fallback
                     self.target_node = None
                     self.path = []
 
-    # get_position and get_visual_angle remain exactly the same as original file
     def get_position(self):
         start_pos = self.G.nodes[self.current_node]['pos']
         if not self.target_node: return start_pos
@@ -217,11 +270,13 @@ class Rickshaw:
         
         offset_lon = center_lon + (perp_x * c.LANE_OFFSET_DEG)
         offset_lat = center_lat + (perp_y * c.LANE_OFFSET_DEG)
+        
         return (offset_lon, offset_lat)
 
     def get_visual_angle(self, start_screen, end_screen):
         dx = end_screen[0] - start_screen[0]
         dy = -(end_screen[1] - start_screen[1]) 
         angle = math.atan2(dy, dx)
-        if self.reversing: angle += math.pi 
+        if self.reversing:
+            angle += math.pi 
         return angle

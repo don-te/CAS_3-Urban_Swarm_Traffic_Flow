@@ -17,6 +17,8 @@ class SimulationEngine:
         self.collision_count = 0 
         self.set_agent_count(c.AGENT_COUNT)
 
+    # logic_engine.py
+
     def set_agent_count(self, target_count):
         current_count = len(self.rickshaws)
         diff = target_count - current_count
@@ -31,7 +33,7 @@ class SimulationEngine:
                     u, v = random.choice(all_edges)
                     spawn_progress = random.uniform(0.05, 0.90)
                     
-                    # Check overlap (simplified)
+                    # Collision Check with existing agents
                     collision = False
                     for agent in self.rickshaws:
                         if agent.current_node == u and agent.target_node == v:
@@ -40,21 +42,54 @@ class SimulationEngine:
                                 break
                     
                     if not collision:
-                        # --- MODIFIED: CHOOSE EDGE DESTINATION ---
-                        # Pick a random edge that is NOT the current spawn edge
-                        valid_dest_edges = [e for e in all_edges if e != (u, v)]
-                        if not valid_dest_edges: valid_dest_edges = all_edges
+                        # --- MODIFICATION START ---
+                        # Probability: 75% EDGE, 25% NODE
+                        if random.random() < 0.25:
+                            dest_type = "NODE"
+                        else:
+                            dest_type = "EDGE"
                         
-                        dest_edge = random.choice(valid_dest_edges)
-                        dest_progress = random.uniform(0.2, 0.8) # Stop somewhere in the middle
+                        d_node = None
+                        d_edge = None
+                        d_prog = None
+                        
+                        if dest_type == "NODE":
+                            # Gather currently occupied destinations from existing rickshaws
+                            occupied_destinations = {
+                                agent.final_dest_node for agent in self.rickshaws 
+                                if agent.dest_type == "NODE" and agent.final_dest_node
+                            }
+                            
+                            # Filter: exclude spawn node 'u' AND occupied nodes
+                            valid_nodes = [
+                                n for n in all_nodes 
+                                if n != u and n not in occupied_destinations
+                            ]
+                            
+                            if valid_nodes:
+                                d_node = random.choice(valid_nodes)
+                            else:
+                                # Fallback to Edge if grid is full
+                                dest_type = "EDGE"
+
+                        # Check again (is not elif because of potential fallback above)
+                        if dest_type == "EDGE":
+                            # Pick random edge != spawn edge
+                            valid_edges = [e for e in all_edges if e != (u, v)]
+                            if not valid_edges: valid_edges = all_edges
+                            d_edge = random.choice(valid_edges)
+                            d_prog = random.uniform(0.2, 0.8)
+                        # --- MODIFICATION END ---
 
                         new_id = len(self.rickshaws)
                         new_agent = Rickshaw(
                             new_id, 
                             self.city, 
-                            start_node=u, 
-                            final_dest_edge=dest_edge,      # Pass Edge
-                            final_dest_progress=dest_progress, # Pass Progress
+                            start_node=u,
+                            dest_type=dest_type,
+                            dest_node=d_node,
+                            dest_edge=d_edge,
+                            dest_progress=d_prog,
                             initial_target=v, 
                             initial_progress=spawn_progress
                         )
@@ -69,7 +104,6 @@ class SimulationEngine:
         elif diff < 0:
             self.rickshaws = self.rickshaws[:target_count]
 
-    # ... Rest of the file (check_collisions, _haversine_distance, update) remains identical ...
     def _haversine_distance(self, pos1, pos2):
         lon1, lat1 = pos1[0], pos1[1]
         lon2, lat2 = pos2[0], pos2[1]
@@ -91,7 +125,7 @@ class SimulationEngine:
                 
                 if a1.is_crashed and a2.is_crashed: continue
                 if a1.immunity_timer > 0 or a2.immunity_timer > 0: continue
-                if a1.has_arrived or a2.has_arrived: continue # Parked cars safety
+                if a1.has_arrived or a2.has_arrived: continue # Parked cars don't crash
                 
                 if (a1.current_node == a2.target_node) and (a1.target_node == a2.current_node): continue
                 if a1.target_node is None or a2.target_node is None: continue
