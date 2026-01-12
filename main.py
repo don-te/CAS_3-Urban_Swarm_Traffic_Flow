@@ -31,15 +31,20 @@ def main():
                 if event.key == pygame.K_SPACE:
                     vis.toggle_pause()
 
-            new_agent_count = vis.handle_ui_events(event)
+            # --- MODIFIED: Handle UI return values ---
+            new_agent_count, next_iter_triggered = vis.handle_ui_events(event)
+            
             if new_agent_count is not None:
                 engine.set_agent_count(new_agent_count)
+            
+            if next_iter_triggered:
+                engine.trigger_next_iteration()
         
         if dt > 0:
             engine.update(dt)
             
-        # --- PASS COLLISION COUNT HERE ---
-        vis.draw(engine.city, engine.rickshaws, engine.collision_count)
+        # --- PASS HISTORY LIST HERE ---
+        vis.draw(engine.city, engine.rickshaws, engine.collision_count, engine.collision_history)
 
     pygame.quit()
     sys.exit()

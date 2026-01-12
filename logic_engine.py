@@ -15,9 +15,12 @@ class SimulationEngine:
         self.bounds = (min(all_lats), max(all_lats), min(all_lons), max(all_lons))
         
         self.collision_count = 0 
+        
+        # --- NEW: Iteration Tracking ---
+        self.collision_history = [] # Stores strings like "Iter 1 Collision: 5"
+        self.current_iteration = 1
+        
         self.set_agent_count(c.AGENT_COUNT)
-
-    # logic_engine.py
 
     def set_agent_count(self, target_count):
         current_count = len(self.rickshaws)
@@ -33,7 +36,6 @@ class SimulationEngine:
                     u, v = random.choice(all_edges)
                     spawn_progress = random.uniform(0.05, 0.90)
                     
-                    # Collision Check with existing agents
                     collision = False
                     for agent in self.rickshaws:
                         if agent.current_node == u and agent.target_node == v:
@@ -42,8 +44,6 @@ class SimulationEngine:
                                 break
                     
                     if not collision:
-                        # --- MODIFICATION START ---
-                        # Probability: 75% EDGE, 25% NODE
                         if random.random() < 0.25:
                             dest_type = "NODE"
                         else:
@@ -54,32 +54,24 @@ class SimulationEngine:
                         d_prog = None
                         
                         if dest_type == "NODE":
-                            # Gather currently occupied destinations from existing rickshaws
                             occupied_destinations = {
                                 agent.final_dest_node for agent in self.rickshaws 
                                 if agent.dest_type == "NODE" and agent.final_dest_node
                             }
-                            
-                            # Filter: exclude spawn node 'u' AND occupied nodes
                             valid_nodes = [
                                 n for n in all_nodes 
                                 if n != u and n not in occupied_destinations
                             ]
-                            
                             if valid_nodes:
                                 d_node = random.choice(valid_nodes)
                             else:
-                                # Fallback to Edge if grid is full
                                 dest_type = "EDGE"
 
-                        # Check again (is not elif because of potential fallback above)
                         if dest_type == "EDGE":
-                            # Pick random edge != spawn edge
                             valid_edges = [e for e in all_edges if e != (u, v)]
                             if not valid_edges: valid_edges = all_edges
                             d_edge = random.choice(valid_edges)
                             d_prog = random.uniform(0.2, 0.8)
-                        # --- MODIFICATION END ---
 
                         new_id = len(self.rickshaws)
                         new_agent = Rickshaw(
@@ -104,6 +96,24 @@ class SimulationEngine:
         elif diff < 0:
             self.rickshaws = self.rickshaws[:target_count]
 
+    def trigger_next_iteration(self):
+        """
+        Archives current stats and resets agents for the next run.
+        """
+        # 1. Archive Stats
+        record = f"Iter {self.current_iteration} Collision: {self.collision_count}"
+        self.collision_history.append(record)
+        
+        # 2. Reset Counter
+        self.collision_count = 0
+        self.current_iteration += 1
+        
+        # 3. Reset Agents (They keep position, lose destination)
+        for agent in self.rickshaws:
+            agent.reset_state_for_next_iteration()
+            
+        print(f"--- STARTED ITERATION {self.current_iteration} ---")
+
     def _haversine_distance(self, pos1, pos2):
         lon1, lat1 = pos1[0], pos1[1]
         lon2, lat2 = pos2[0], pos2[1]
@@ -125,7 +135,7 @@ class SimulationEngine:
                 
                 if a1.is_crashed and a2.is_crashed: continue
                 if a1.immunity_timer > 0 or a2.immunity_timer > 0: continue
-                if a1.has_arrived or a2.has_arrived: continue # Parked cars don't crash
+                if a1.has_arrived or a2.has_arrived: continue
                 
                 if (a1.current_node == a2.target_node) and (a1.target_node == a2.current_node): continue
                 if a1.target_node is None or a2.target_node is None: continue

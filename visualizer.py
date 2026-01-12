@@ -23,23 +23,37 @@ class Visualizer:
         # Fonts
         self.font_title = pygame.font.SysFont("Arial", 24, bold=True)
         self.font_stats = pygame.font.SysFont("Arial", 18)
+        self.font_small = pygame.font.SysFont("Arial", 14)
 
         # UI Elements
+        # 1. Play/Pause
         self.play_btn = Button(
             x=panel_x, y=50, w=100, h=40,
             text="START", callback=self.toggle_pause,
             color=(60, 200, 60), hover_color=(80, 230, 80)
         )
+        
+        # 2. Next Iteration Button
+        self.next_iter_btn = Button(
+            x=panel_x + 110, y=50, w=100, h=40,
+            text="NEXT ITER", callback=self._dummy_callback, # Callback handled manually
+            color=(60, 100, 200), hover_color=(80, 120, 230)
+        )
+
+        # 3. Sliders (Shifted down)
         self.agent_slider = Slider(
-            x=panel_x, y=150, w=200, h=10,
+            x=panel_x, y=130, w=200, h=10,
             min_val=c.MIN_AGENTS, max_val=c.MAX_AGENTS, start_val=c.AGENT_COUNT,
             label="Agent Count"
         )
         self.speed_slider = Slider(
-            x=panel_x, y=230, w=200, h=10,
+            x=panel_x, y=200, w=200, h=10,
             min_val=0.1, max_val=5.0, start_val=1.0, 
             label="Sim Speed", is_float=True
         )
+
+    def _dummy_callback(self):
+        pass # The actual logic is handled in handle_ui_events
 
     def toggle_pause(self):
         self.is_paused = not self.is_paused
@@ -56,10 +70,22 @@ class Visualizer:
         self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
 
     def handle_ui_events(self, event):
+        """
+        Returns a tuple: (new_agent_count, next_iteration_triggered)
+        """
         self.play_btn.handle_event(event)
+        
+        # Check Next Iteration Button
+        next_iter_triggered = False
+        if self.next_iter_btn.handle_event(event):
+            next_iter_triggered = True
+
         new_speed = self.speed_slider.handle_event(event)
         if new_speed is not None: self.sim_speed = new_speed
-        return self.agent_slider.handle_event(event)
+        
+        new_agent_count = self.agent_slider.handle_event(event)
+        
+        return new_agent_count, next_iter_triggered
 
     def _get_perp_offset(self, start, end, magnitude):
         dx = end[0] - start[0]
@@ -69,7 +95,7 @@ class Visualizer:
         ux, uy = dx / length, dy / length
         return (uy * magnitude, -ux * magnitude)
 
-    def draw(self, city, rickshaws, total_collisions):
+    def draw(self, city, rickshaws, total_collisions, history_list):
         # Clear
         self.screen.fill((20, 20, 20)) 
         self.sim_surface.fill(c.BG_COLOR)
@@ -161,14 +187,29 @@ class Visualizer:
         self.agent_slider.draw(self.screen)
         self.speed_slider.draw(self.screen)
         self.play_btn.draw(self.screen)
+        self.next_iter_btn.draw(self.screen)
         
         # Stats Section
-        pygame.draw.line(self.screen, (60, 60, 60), (20, 300), (self.sidebar_width - 20, 300), 1)
+        pygame.draw.line(self.screen, (60, 60, 60), (20, 250), (self.sidebar_width - 20, 250), 1)
         
         stats_title = self.font_title.render("STATS", True, (150, 150, 150))
-        self.screen.blit(stats_title, (25, 320))
+        self.screen.blit(stats_title, (25, 260))
         
-        collision_surf = self.font_stats.render(f"Collisions: {total_collisions}", True, (255, 100, 100))
-        self.screen.blit(collision_surf, (25, 360))
+        # Current Collision Count
+        collision_surf = self.font_stats.render(f"Current Collisions: {total_collisions}", True, (255, 100, 100))
+        self.screen.blit(collision_surf, (25, 300))
+
+        # --- HISTORY LIST ---
+        y_hist = 340
+        if history_list:
+            hist_title = self.font_stats.render("History:", True, (200, 200, 200))
+            self.screen.blit(hist_title, (25, y_hist))
+            y_hist += 25
+            
+            # Show last 10 entries to avoid overflow
+            for entry in history_list[-15:]:
+                entry_surf = self.font_small.render(entry, True, (150, 150, 150))
+                self.screen.blit(entry_surf, (25, y_hist))
+                y_hist += 20
 
         pygame.display.flip()

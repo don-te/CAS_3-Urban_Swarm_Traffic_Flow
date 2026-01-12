@@ -50,6 +50,27 @@ class Rickshaw:
         self.blacklisted_edges = set() 
         self.speed_factor = random.uniform(0.9, 1.1)
 
+    def reset_state_for_next_iteration(self):
+        """
+        Called when the user clicks 'Next Iteration'.
+        Keeps current position, but clears destination so a new one is picked.
+        """
+        self.has_arrived = False
+        self.is_crashed = False
+        self.crash_timer = 0.0
+        self.reversing = False
+        self.blacklisted_edges.clear()
+        
+        # Clear Destination info to trigger _pick_new_destination logic
+        self.dest_type = None 
+        self.final_dest_node = None
+        self.dest_edge = None
+        self.nav_target_node = None
+        self.path = []
+        
+        # Note: We do NOT reset self.current_node or self.progress.
+        # The agent starts exactly where they finished the previous trip.
+
     def _enter_edge(self, u, v):
         if self.G.has_edge(u, v):
             self.G[u][v]['current_load'] += 1
@@ -63,17 +84,13 @@ class Rickshaw:
                     self.G[u][v]['current_load'] -= 1
             self.current_edge = None
 
-    # rickshaw.py
-
     def _pick_new_destination(self, all_agents):
         """
         Picks a new destination (Node or Edge) and calculates the path.
         """
         # 1. Decide Destination if not set
         if not self.nav_target_node:
-            # --- MODIFICATION START ---
             # Probability Split: 25% Node, 75% Edge
-            # random.random() returns float 0.0 to 1.0
             if random.random() < 0.25:
                 self.dest_type = "NODE"
             else:
@@ -99,17 +116,15 @@ class Rickshaw:
                     self.final_dest_node = random.choice(candidates)
                     self.nav_target_node = self.final_dest_node
                 else:
-                    # If all nodes are taken, force fallback to EDGE to prevent stalling
+                    # If all nodes are taken, force fallback to EDGE
                     self.dest_type = "EDGE"
             
-            # Note: This is not an 'elif' because the NODE block might fallback to EDGE
             if self.dest_type == "EDGE": 
                 all_edges = list(self.G.edges())
                 if all_edges:
                     self.dest_edge = random.choice(all_edges)
-                    self.dest_progress = random.uniform(0.2, 0.8) # Stop mid-block
+                    self.dest_progress = random.uniform(0.2, 0.8) 
                     self.nav_target_node = self.dest_edge[0]
-            # --- MODIFICATION END ---
 
         # 2. Calculate Path
         if not self.nav_target_node: return
@@ -150,6 +165,7 @@ class Rickshaw:
 
         except (nx.NetworkXNoPath, nx.NodeNotFound):
             self.target_node = None
+
     def _detect_blockage(self, all_agents):
         if not self.target_node: return False
         for other in all_agents:
@@ -174,8 +190,9 @@ class Rickshaw:
         if self.immunity_timer > 0: self.immunity_timer -= dt
 
         # --- DESTINATION CHECK ---
+        # If we don't have a target, pick one immediately
         if not self.target_node:
-            # Immediate arrival check for NODE type
+            # Immediate arrival check for NODE type (if just reset)
             if self.dest_type == "NODE" and self.current_node == self.final_dest_node:
                 self.has_arrived = True
                 return
@@ -212,7 +229,6 @@ class Rickshaw:
             self.progress += current_speed * dt
 
             # --- ARRIVAL CHECK: EDGE TYPE ---
-            # Check if we are currently traversing the specific destination edge
             if self.dest_type == "EDGE":
                 is_dest_edge = (self.current_node == self.dest_edge[0] and self.target_node == self.dest_edge[1])
                 if is_dest_edge and self.progress >= self.dest_progress:
@@ -227,22 +243,17 @@ class Rickshaw:
                 self.current_node = self.target_node
                 self.progress = 0.0
                 
-                # ARRIVAL CHECK: NODE TYPE
                 if self.dest_type == "NODE" and self.current_node == self.final_dest_node:
                     self.has_arrived = True
                     self.target_node = None
                     return
 
-                # --- CRITICAL FIX: Safe Path Advancement ---
                 if len(self.path) > 1:
-                    self.path.pop(0) # Remove the node we just left
-                    
-                    # Check if there is a next node
+                    self.path.pop(0) 
                     if len(self.path) > 1:
                         self.target_node = self.path[1]
                         self._enter_edge(self.current_node, self.target_node)
                     else:
-                        # End of path reached
                         self.target_node = None
                         self.path = []
                 else:
