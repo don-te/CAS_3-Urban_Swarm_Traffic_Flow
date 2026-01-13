@@ -1,118 +1,166 @@
+# logic_engine.py
 import math
 import random
 import networkx as nx
 import config as c
 from city import CityGraph
 from rickshaw import Rickshaw
+from traffic_control import TrafficManager
 
 class SimulationEngine:
     def __init__(self):
         self.city = CityGraph(rows=6, cols=6, block_size_meters=150)
+        self.traffic_manager = TrafficManager(self.city)
         self.rickshaws = []
+        
+        # --- SCENARIO MEMORY ---
+        self.scenario_memory = [] 
         
         all_lats = [d['pos'][1] for n, d in self.city.G.nodes(data=True)]
         all_lons = [d['pos'][0] for n, d in self.city.G.nodes(data=True)]
         self.bounds = (min(all_lats), max(all_lats), min(all_lons), max(all_lons))
         
         self.collision_count = 0 
-        
-        # --- NEW: Iteration Tracking ---
-        self.collision_history = [] # Stores strings like "Iter 1 Collision: 5"
+        self.collision_history = []
         self.current_iteration = 1
         
+        # Initialize default agents
         self.set_agent_count(c.AGENT_COUNT)
 
     def set_agent_count(self, target_count):
         current_count = len(self.rickshaws)
         diff = target_count - current_count
 
+        # --- ADDING AGENTS ---
         if diff > 0:
             all_edges = list(self.city.G.edges())
             all_nodes = list(self.city.G.nodes())
 
             for _ in range(diff):
-                placed = False
-                for attempt in range(20):
-                    u, v = random.choice(all_edges)
-                    spawn_progress = random.uniform(0.05, 0.90)
-                    
-                    collision = False
-                    for agent in self.rickshaws:
-                        if agent.current_node == u and agent.target_node == v:
-                            if abs(agent.progress - spawn_progress) < 0.15:
-                                collision = True
-                                break
-                    
-                    if not collision:
-                        if random.random() < 0.25:
-                            dest_type = "NODE"
-                        else:
-                            dest_type = "EDGE"
-                        
-                        d_node = None
-                        d_edge = None
-                        d_prog = None
-                        
-                        if dest_type == "NODE":
-                            occupied_destinations = {
-                                agent.final_dest_node for agent in self.rickshaws 
-                                if agent.dest_type == "NODE" and agent.final_dest_node
-                            }
-                            valid_nodes = [
-                                n for n in all_nodes 
-                                if n != u and n not in occupied_destinations
-                            ]
-                            if valid_nodes:
-                                d_node = random.choice(valid_nodes)
-                            else:
-                                dest_type = "EDGE"
-
-                        if dest_type == "EDGE":
-                            valid_edges = [e for e in all_edges if e != (u, v)]
-                            if not valid_edges: valid_edges = all_edges
-                            d_edge = random.choice(valid_edges)
-                            d_prog = random.uniform(0.2, 0.8)
-
-                        new_id = len(self.rickshaws)
-                        new_agent = Rickshaw(
-                            new_id, 
-                            self.city, 
-                            start_node=u,
-                            dest_type=dest_type,
-                            dest_node=d_node,
-                            dest_edge=d_edge,
-                            dest_progress=d_prog,
-                            initial_target=v, 
-                            initial_progress=spawn_progress
-                        )
-                        
-                        self.rickshaws.append(new_agent)
-                        placed = True
-                        break 
+                # 1. Generate Random Start
+                u, v = random.choice(all_edges)
+                spawn_progress = random.uniform(0.05, 0.90)
                 
-                if not placed:
-                    print(f"Warning: Grid saturation. Could not spawn agent {len(self.rickshaws)+1}.")
+                # Init variables
+                d_node = None
+                d_edge = None
+                d_prog = None
+                
+                # 2. Pick Destination
+                if random.random() < 0.25:
+                    dest_type = "NODE"
+                    occupied = {a.final_dest_node for a in self.rickshaws if a.dest_type == "NODE" and a.final_dest_node}
+                    candidates = [n for n in all_nodes if n != u and n not in occupied]
+                    
+                    if candidates:
+                        d_node = random.choice(candidates)
+                    else:
+                        dest_type = "EDGE" # Fallback if no nodes available
+                else:
+                    dest_type = "EDGE"
+                
+                # 3. Handle EDGE Destination (The Bug Fix)
+                if dest_type == "EDGE":
+                    # Filter out the starting edge (u, v) so they don't spawn 'Arrived'
+                    valid_edges = [e for e in all_edges if e != (u, v)]
+                    
+                    if valid_edges:
+                        d_edge = random.choice(valid_edges)
+                    else:
+                        # Fallback for extremely small graphs (unlikely here)
+                        d_edge = (u, v)
+                        
+                    d_prog = random.uniform(0.2, 0.8)
 
+                # 4. Create the Agent
+                new_id = len(self.rickshaws)
+                new_agent = Rickshaw(
+                    new_id, self.city, 
+                    start_node=u, initial_target=v, initial_progress=spawn_progress,
+                    dest_type=dest_type, dest_node=d_node, dest_edge=d_edge, dest_progress=d_prog
+                )
+                
+                # 5. SAVE TO MEMORY
+                agent_config = {
+                    "start_node": u,
+                    "initial_target": v,
+                    "initial_progress": spawn_progress,
+                    "dest_type": dest_type,
+                    "dest_node": d_node,
+                    "dest_edge": d_edge,
+                    "dest_progress": d_prog
+                }
+                self.scenario_memory.append(agent_config)
+                self.rickshaws.append(new_agent)
+
+        # --- REMOVING AGENTS ---
         elif diff < 0:
+            to_remove = self.rickshaws[target_count:]
+            
+            for agent in to_remove:
+                # Remove load from roads to prevent "Ghost Traffic"
+                if agent.current_edge:
+                    u, v = agent.current_edge
+                    if self.city.G.has_edge(u, v):
+                        if self.city.G[u][v]['current_load'] > 0:
+                            self.city.G[u][v]['current_load'] -= 1
+            
             self.rickshaws = self.rickshaws[:target_count]
+            self.scenario_memory = self.scenario_memory[:target_count]
+
+    def reset_simulation(self):
+        """Hard reset: Reloads the EXACT same scenario from memory."""
+        self.collision_count = 0
+        self.collision_history = []
+        self.current_iteration = 1
+        # Re-create traffic manager to reset light timers
+        self.traffic_manager = TrafficManager(self.city)
+        
+        print("--- SIMULATION RESET (Replaying Scenario) ---")
+        self._reload_scenario()
 
     def trigger_next_iteration(self):
-        """
-        Archives current stats and resets agents for the next run.
-        """
         # 1. Archive Stats
-        record = f"Iter {self.current_iteration} Collision: {self.collision_count}"
+        record = f"Iter {self.current_iteration} Collisions: {self.collision_count}"
         self.collision_history.append(record)
         
         # 2. Reset Counter
         self.collision_count = 0
         self.current_iteration += 1
         
-        # 3. Reset Agents (They keep position, lose destination)
+        # 3. RELOAD SCENARIO
+        print(f"--- STARTED ITERATION {self.current_iteration} (Replaying Scenario) ---")
+        self._reload_scenario()
+
+    def _reload_scenario(self):
+        """
+        Clears the board and respawns agents using the SAVED memory.
+        """
+        # 1. Clean up ALL existing loads from current agents
         for agent in self.rickshaws:
-            agent.reset_state_for_next_iteration()
-            
-        print(f"--- STARTED ITERATION {self.current_iteration} ---")
+            if agent.current_edge:
+                u, v = agent.current_edge
+                if self.city.G.has_edge(u, v) and self.city.G[u][v]['current_load'] > 0:
+                    self.city.G[u][v]['current_load'] -= 1
+        
+        self.rickshaws = []
+        
+        # 2. Respawn from Memory
+        for i, config in enumerate(self.scenario_memory):
+            new_agent = Rickshaw(
+                i, self.city,
+                start_node=config['start_node'],
+                initial_target=config['initial_target'],
+                initial_progress=config['initial_progress'],
+                dest_type=config['dest_type'],
+                dest_node=config['dest_node'],
+                dest_edge=config['dest_edge'],
+                dest_progress=config['dest_progress']
+            )
+            self.rickshaws.append(new_agent)
+
+    def toggle_traffic_lights(self):
+        self.traffic_manager.toggle()
 
     def _haversine_distance(self, pos1, pos2):
         lon1, lat1 = pos1[0], pos1[1]
@@ -158,6 +206,7 @@ class SimulationEngine:
                     if crash: self.collision_count += 1
 
     def update(self, dt):
+        self.traffic_manager.update(dt)
         for agent in self.rickshaws:
-            agent.move(dt, self.rickshaws)
+            agent.move(dt, self.rickshaws, self.traffic_manager)
         self.check_collisions()

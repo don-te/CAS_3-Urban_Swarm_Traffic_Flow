@@ -1,8 +1,10 @@
+# visualizer.py
 import pygame
 import math
 import config as c
 from utils import map_coords_to_screen, draw_triangle
 from ui import Slider, Button
+from traffic_control import TrafficManager
 
 class Visualizer:
     def __init__(self, bounds):
@@ -25,35 +27,50 @@ class Visualizer:
         self.font_stats = pygame.font.SysFont("Arial", 18)
         self.font_small = pygame.font.SysFont("Arial", 14)
 
-        # UI Elements
-        # 1. Play/Pause
+        # --- UI ELEMENTS ---
+        
+        # 1. Start/Pause
         self.play_btn = Button(
             x=panel_x, y=50, w=100, h=40,
             text="START", callback=self.toggle_pause,
             color=(60, 200, 60), hover_color=(80, 230, 80)
         )
         
-        # 2. Next Iteration Button
+        # 2. Next Iteration
         self.next_iter_btn = Button(
             x=panel_x + 110, y=50, w=100, h=40,
-            text="NEXT ITER", callback=self._dummy_callback, # Callback handled manually
+            text="NEXT ITER", callback=self._dummy_callback,
             color=(60, 100, 200), hover_color=(80, 120, 230)
         )
 
-        # 3. Sliders (Shifted down)
+        # 3. Reset Simulation (NEW)
+        self.reset_btn = Button(
+            x=panel_x, y=100, w=100, h=40,
+            text="RESET", callback=self._dummy_callback,
+            color=(200, 60, 60), hover_color=(230, 80, 80)
+        )
+
+        # 4. Traffic Light Toggle (Shifted Right)
+        self.traffic_btn = Button(
+            x=panel_x + 110, y=100, w=100, h=40,
+            text="LIGHTS", callback=self._dummy_callback,
+            color=(100, 100, 100), hover_color=(120, 120, 120)
+        )
+
+        # 5. Sliders
         self.agent_slider = Slider(
-            x=panel_x, y=130, w=200, h=10,
+            x=panel_x, y=160, w=200, h=10,
             min_val=c.MIN_AGENTS, max_val=c.MAX_AGENTS, start_val=c.AGENT_COUNT,
             label="Agent Count"
         )
         self.speed_slider = Slider(
-            x=panel_x, y=200, w=200, h=10,
+            x=panel_x, y=230, w=200, h=10,
             min_val=0.1, max_val=5.0, start_val=1.0, 
             label="Sim Speed", is_float=True
         )
 
     def _dummy_callback(self):
-        pass # The actual logic is handled in handle_ui_events
+        pass 
 
     def toggle_pause(self):
         self.is_paused = not self.is_paused
@@ -71,21 +88,42 @@ class Visualizer:
 
     def handle_ui_events(self, event):
         """
-        Returns a tuple: (new_agent_count, next_iteration_triggered)
+        Returns tuple: (new_agent_count, next_iteration_triggered, toggle_lights_clicked, reset_triggered)
         """
         self.play_btn.handle_event(event)
         
-        # Check Next Iteration Button
         next_iter_triggered = False
         if self.next_iter_btn.handle_event(event):
             next_iter_triggered = True
 
+        # --- LIGHTS TOGGLE ---
+        toggle_lights = False
+        if self.traffic_btn.handle_event(event):
+            toggle_lights = True
+            # Visual Feedback for Toggle
+            if "LIGHTS" in self.traffic_btn.text:
+                if self.traffic_btn.color == (100, 100, 100):
+                    self.traffic_btn.color = (200, 200, 0) # Gold (On)
+                else:
+                    self.traffic_btn.color = (100, 100, 100) # Grey (Off)
+
+        # --- RESET CHECK ---
+        reset_triggered = False
+        if self.reset_btn.handle_event(event):
+            reset_triggered = True
+            # Reset Visual State
+            self.agent_slider.val = c.AGENT_COUNT
+            self.is_paused = True
+            self.play_btn.text = "START"
+            self.play_btn.color = (60, 200, 60)
+
+        # --- SLIDERS ---
         new_speed = self.speed_slider.handle_event(event)
         if new_speed is not None: self.sim_speed = new_speed
         
         new_agent_count = self.agent_slider.handle_event(event)
         
-        return new_agent_count, next_iter_triggered
+        return new_agent_count, next_iter_triggered, toggle_lights, reset_triggered
 
     def _get_perp_offset(self, start, end, magnitude):
         dx = end[0] - start[0]
@@ -95,7 +133,57 @@ class Visualizer:
         ux, uy = dx / length, dy / length
         return (uy * magnitude, -ux * magnitude)
 
-    def draw(self, city, rickshaws, total_collisions, history_list):
+    def draw_traffic_lights(self, city, traffic_manager, to_screen_func):
+        if not traffic_manager.active: return
+        
+        for node_id, state in traffic_manager.intersections.items():
+            phase = state['phase']
+            
+            # Determine colors based on phase
+            v_color = c.COLOR_JAM # Default Red
+            h_color = c.COLOR_JAM # Default Red
+            
+            if phase == "V_GREEN": v_color = (0, 255, 0)
+            elif phase == "V_YELLOW": v_color = (255, 255, 0)
+            
+            if phase == "H_GREEN": h_color = (0, 255, 0)
+            elif phase == "H_YELLOW": h_color = (255, 255, 0)
+
+            # Draw Vertical Lights (Incoming from North/South)
+            for neighbor in state['vertical']:
+                self._draw_stop_line(city, neighbor, node_id, v_color, to_screen_func)
+
+            # Draw Horizontal Lights (Incoming from East/West)
+            for neighbor in state['horizontal']:
+                self._draw_stop_line(city, neighbor, node_id, h_color, to_screen_func)
+
+    def _draw_stop_line(self, city, u, v, color, to_screen):
+        """Draws a perpendicular line near the end of edge u->v"""
+        u_pos = city.G.nodes[u]['pos']
+        v_pos = city.G.nodes[v]['pos']
+        
+        s = to_screen(u_pos[1], u_pos[0])
+        e = to_screen(v_pos[1], v_pos[0])
+        
+        # 1. Apply Lane Offset to find the center of the specific lane
+        ox, oy = self._get_perp_offset(s, e, c.LANE_OFFSET)
+        lane_s = (s[0] + ox, s[1] + oy)
+        lane_e = (e[0] + ox, e[1] + oy)
+        
+        # 2. Find Stop Position (92% down the lane)
+        stop_ratio = 0.92
+        stop_x = lane_s[0] + (lane_e[0] - lane_s[0]) * stop_ratio
+        stop_y = lane_s[1] + (lane_e[1] - lane_s[1]) * stop_ratio
+        
+        # 3. Draw Perpendicular Line (The Traffic Light bar)
+        px, py = self._get_perp_offset(lane_s, lane_e, 10) 
+        
+        p1 = (stop_x + px, stop_y + py)
+        p2 = (stop_x - px, stop_y - py)
+        
+        pygame.draw.line(self.sim_surface, color, p1, p2, 4)
+
+    def draw(self, city, rickshaws, total_collisions, history_list, traffic_manager=None):
         # Clear
         self.screen.fill((20, 20, 20)) 
         self.sim_surface.fill(c.BG_COLOR)
@@ -139,6 +227,10 @@ class Visualizer:
             pos = data['pos']
             s_pos = to_screen(pos[1], pos[0])
             pygame.draw.circle(self.sim_surface, c.COLOR_ASPHALT, s_pos, int(c.ROAD_WIDTH/2))
+        
+        # --- DRAW TRAFFIC LIGHTS ---
+        if traffic_manager:
+            self.draw_traffic_lights(city, traffic_manager, to_screen)
 
         # --- DRAW AGENTS ---
         for agent in rickshaws:
@@ -163,7 +255,7 @@ class Visualizer:
             if agent.is_crashed:
                 agent_color = c.COLOR_JAM      # Red
             elif agent.has_arrived:
-                agent_color = (65, 105, 225)   # <--- ROYAL BLUE (Destination Reached)
+                agent_color = (65, 105, 225)   # Royal Blue
             elif agent.reversing:
                 agent_color = (255, 165, 0)    # Orange
             
@@ -188,25 +280,25 @@ class Visualizer:
         self.speed_slider.draw(self.screen)
         self.play_btn.draw(self.screen)
         self.next_iter_btn.draw(self.screen)
+        self.traffic_btn.draw(self.screen)
+        self.reset_btn.draw(self.screen) # Draw Reset Button
         
         # Stats Section
-        pygame.draw.line(self.screen, (60, 60, 60), (20, 250), (self.sidebar_width - 20, 250), 1)
+        pygame.draw.line(self.screen, (60, 60, 60), (20, 270), (self.sidebar_width - 20, 270), 1)
         
         stats_title = self.font_title.render("STATS", True, (150, 150, 150))
-        self.screen.blit(stats_title, (25, 260))
+        self.screen.blit(stats_title, (25, 280))
         
-        # Current Collision Count
         collision_surf = self.font_stats.render(f"Current Collisions: {total_collisions}", True, (255, 100, 100))
-        self.screen.blit(collision_surf, (25, 300))
+        self.screen.blit(collision_surf, (25, 320))
 
         # --- HISTORY LIST ---
-        y_hist = 340
+        y_hist = 360
         if history_list:
             hist_title = self.font_stats.render("History:", True, (200, 200, 200))
             self.screen.blit(hist_title, (25, y_hist))
             y_hist += 25
             
-            # Show last 10 entries to avoid overflow
             for entry in history_list[-15:]:
                 entry_surf = self.font_small.render(entry, True, (150, 150, 150))
                 self.screen.blit(entry_surf, (25, y_hist))

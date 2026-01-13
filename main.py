@@ -1,3 +1,4 @@
+# main.py (Full Update)
 import pygame
 import sys
 import config as c
@@ -31,20 +32,26 @@ def main():
                 if event.key == pygame.K_SPACE:
                     vis.toggle_pause()
 
-            # --- MODIFIED: Handle UI return values ---
-            new_agent_count, next_iter_triggered = vis.handle_ui_events(event)
+            # --- UPDATED UNPACKING ---
+            new_agent_count, next_iter, toggle_lights, reset_triggered = vis.handle_ui_events(event)
             
-            if new_agent_count is not None:
+            if reset_triggered:
+                engine.reset_simulation()
+            
+            # Only set agent count if NOT resetting (prevents conflict)
+            elif new_agent_count is not None:
                 engine.set_agent_count(new_agent_count)
             
-            if next_iter_triggered:
+            if next_iter:
                 engine.trigger_next_iteration()
+
+            if toggle_lights:
+                engine.toggle_traffic_lights()
         
         if dt > 0:
             engine.update(dt)
             
-        # --- PASS HISTORY LIST HERE ---
-        vis.draw(engine.city, engine.rickshaws, engine.collision_count, engine.collision_history)
+        vis.draw(engine.city, engine.rickshaws, engine.collision_count, engine.collision_history, engine.traffic_manager)
 
     pygame.quit()
     sys.exit()
