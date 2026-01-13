@@ -2,6 +2,8 @@
 import math
 import random
 import networkx as nx
+import json
+import os
 import config as c
 from city import CityGraph
 from rickshaw import Rickshaw
@@ -13,8 +15,9 @@ class SimulationEngine:
         self.traffic_manager = TrafficManager(self.city)
         self.rickshaws = []
         
-        # --- SCENARIO MEMORY ---
-        self.scenario_memory = [] 
+        # --- JSON SCENARIO PERSISTENCE ---
+        self.scenario_file = "agent_scenario.json"
+        self.scenario_configs = [] # Local mirror of JSON data
         
         all_lats = [d['pos'][1] for n, d in self.city.G.nodes(data=True)]
         all_lons = [d['pos'][0] for n, d in self.city.G.nodes(data=True)]
@@ -24,8 +27,13 @@ class SimulationEngine:
         self.collision_history = []
         self.current_iteration = 1
         
-        # Initialize default agents
-        self.set_agent_count(c.AGENT_COUNT)
+        # Initialize: Load from file if exists, else start default
+        if os.path.exists(self.scenario_file):
+            print(f"Loading existing scenario from {self.scenario_file}")
+            self.load_scenario_from_disk()
+        else:
+            print("No scenario file found. Creating new default scenario.")
+            self.set_agent_count(c.AGENT_COUNT)
 
     def set_agent_count(self, target_count):
         current_count = len(self.rickshaws)
@@ -59,20 +67,16 @@ class SimulationEngine:
                 else:
                     dest_type = "EDGE"
                 
-                # 3. Handle EDGE Destination (The Bug Fix)
+                # 3. Handle EDGE Destination
                 if dest_type == "EDGE":
-                    # Filter out the starting edge (u, v) so they don't spawn 'Arrived'
                     valid_edges = [e for e in all_edges if e != (u, v)]
-                    
                     if valid_edges:
                         d_edge = random.choice(valid_edges)
                     else:
-                        # Fallback for extremely small graphs (unlikely here)
                         d_edge = (u, v)
-                        
                     d_prog = random.uniform(0.2, 0.8)
 
-                # 4. Create the Agent
+                # 4. Create the Agent (It will assign internal speed_factor)
                 new_id = len(self.rickshaws)
                 new_agent = Rickshaw(
                     new_id, self.city, 
@@ -80,25 +84,28 @@ class SimulationEngine:
                     dest_type=dest_type, dest_node=d_node, dest_edge=d_edge, dest_progress=d_prog
                 )
                 
-                # 5. SAVE TO MEMORY
+                # 5. Create Config Entry (Include Speed Factor!)
                 agent_config = {
+                    "id": new_id,
                     "start_node": u,
                     "initial_target": v,
                     "initial_progress": spawn_progress,
                     "dest_type": dest_type,
                     "dest_node": d_node,
                     "dest_edge": d_edge,
-                    "dest_progress": d_prog
+                    "dest_progress": d_prog,
+                    "speed_factor": new_agent.speed_factor
                 }
-                self.scenario_memory.append(agent_config)
+                
+                self.scenario_configs.append(agent_config)
                 self.rickshaws.append(new_agent)
 
         # --- REMOVING AGENTS ---
         elif diff < 0:
+            # 1. Remove from Sim
             to_remove = self.rickshaws[target_count:]
-            
             for agent in to_remove:
-                # Remove load from roads to prevent "Ghost Traffic"
+                # Remove load from roads
                 if agent.current_edge:
                     u, v = agent.current_edge
                     if self.city.G.has_edge(u, v):
@@ -106,18 +113,69 @@ class SimulationEngine:
                             self.city.G[u][v]['current_load'] -= 1
             
             self.rickshaws = self.rickshaws[:target_count]
-            self.scenario_memory = self.scenario_memory[:target_count]
+            
+            # 2. Remove from Configs
+            self.scenario_configs = self.scenario_configs[:target_count]
+
+        # --- SAVE TO DISK ---
+        self.save_scenario_to_disk()
+
+    def save_scenario_to_disk(self):
+        try:
+            with open(self.scenario_file, 'w') as f:
+                json.dump(self.scenario_configs, f, indent=4)
+        except Exception as e:
+            print(f"Error saving scenario: {e}")
+
+    def load_scenario_from_disk(self):
+        """
+        Clears the board and respawns agents using the JSON file.
+        """
+        # 1. Clear existing load
+        for agent in self.rickshaws:
+            if agent.current_edge:
+                u, v = agent.current_edge
+                if self.city.G.has_edge(u, v) and self.city.G[u][v]['current_load'] > 0:
+                    self.city.G[u][v]['current_load'] -= 1
+        
+        self.rickshaws = []
+        
+        # 2. Read File
+        try:
+            with open(self.scenario_file, 'r') as f:
+                self.scenario_configs = json.load(f)
+                
+            # 3. Respawn Agents
+            for config in self.scenario_configs:
+                new_agent = Rickshaw(
+                    config['id'], self.city,
+                    start_node=config['start_node'],
+                    initial_target=config['initial_target'],
+                    initial_progress=config['initial_progress'],
+                    dest_type=config['dest_type'],
+                    dest_node=config['dest_node'],
+                    dest_edge=config['dest_edge'],
+                    dest_progress=config['dest_progress'],
+                    speed_factor=config.get('speed_factor', 1.0) # Load persisted speed
+                )
+                self.rickshaws.append(new_agent)
+                
+        except (FileNotFoundError, json.JSONDecodeError):
+            print("Error loading scenario file. Resetting to empty.")
+            self.scenario_configs = []
+            self.set_agent_count(c.AGENT_COUNT)
 
     def reset_simulation(self):
-        """Hard reset: Reloads the EXACT same scenario from memory."""
+        """Hard reset: Reloads from JSON."""
         self.collision_count = 0
         self.collision_history = []
         self.current_iteration = 1
-        # Re-create traffic manager to reset light timers
+        
+        # Re-create traffic manager (Timers are still random per your request)
         self.traffic_manager = TrafficManager(self.city)
         
-        print("--- SIMULATION RESET (Replaying Scenario) ---")
-        self._reload_scenario()
+        print("--- SIMULATION RESET (Reloading from JSON) ---")
+        self.load_scenario_from_disk()
 
     def trigger_next_iteration(self):
         # 1. Archive Stats
@@ -128,36 +186,9 @@ class SimulationEngine:
         self.collision_count = 0
         self.current_iteration += 1
         
-        # 3. RELOAD SCENARIO
-        print(f"--- STARTED ITERATION {self.current_iteration} (Replaying Scenario) ---")
-        self._reload_scenario()
-
-    def _reload_scenario(self):
-        """
-        Clears the board and respawns agents using the SAVED memory.
-        """
-        # 1. Clean up ALL existing loads from current agents
-        for agent in self.rickshaws:
-            if agent.current_edge:
-                u, v = agent.current_edge
-                if self.city.G.has_edge(u, v) and self.city.G[u][v]['current_load'] > 0:
-                    self.city.G[u][v]['current_load'] -= 1
-        
-        self.rickshaws = []
-        
-        # 2. Respawn from Memory
-        for i, config in enumerate(self.scenario_memory):
-            new_agent = Rickshaw(
-                i, self.city,
-                start_node=config['start_node'],
-                initial_target=config['initial_target'],
-                initial_progress=config['initial_progress'],
-                dest_type=config['dest_type'],
-                dest_node=config['dest_node'],
-                dest_edge=config['dest_edge'],
-                dest_progress=config['dest_progress']
-            )
-            self.rickshaws.append(new_agent)
+        # 3. RELOAD
+        print(f"--- STARTED ITERATION {self.current_iteration} (Reloading from JSON) ---")
+        self.load_scenario_from_disk()
 
     def toggle_traffic_lights(self):
         self.traffic_manager.toggle()

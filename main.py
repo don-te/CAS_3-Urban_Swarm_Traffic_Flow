@@ -14,10 +14,16 @@ def main():
     while running:
         raw_dt = clock.tick(c.FPS) / 1000.0
         
+        # --- FIXED TIME STEP (FIX 3) ---
+        # We ignore raw_dt for physics calculations to prevent "Butterfly Effect" drift.
+        # This ensures that 1 second of sim time is ALWAYS processed as exact mathematical steps.
+        # We multiply by sim_speed so the user can still speed up the simulation UI.
+        FIXED_STEP = 1.0 / c.FPS
+        
         if vis.is_paused:
             dt = 0
         else:
-            dt = raw_dt * vis.sim_speed
+            dt = FIXED_STEP * vis.sim_speed
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -32,7 +38,7 @@ def main():
                 if event.key == pygame.K_SPACE:
                     vis.toggle_pause()
 
-            # --- UPDATED UNPACKING ---
+            # --- UI EVENT UNPACKING ---
             new_agent_count, next_iter, toggle_lights, reset_triggered = vis.handle_ui_events(event)
             
             if reset_triggered:

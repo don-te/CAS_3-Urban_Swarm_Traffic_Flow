@@ -7,7 +7,7 @@ import config as c
 class Rickshaw:
     def __init__(self, agent_id, city_graph, start_node=None, 
                  dest_type="NODE", dest_node=None, dest_edge=None, dest_progress=None, 
-                 initial_target=None, initial_progress=0.0):
+                 initial_target=None, initial_progress=0.0, speed_factor=None):
         self.id = agent_id
         self.city = city_graph
         self.G = city_graph.G
@@ -42,7 +42,14 @@ class Rickshaw:
         self.has_arrived = False 
         self.reversing = False          
         self.blacklisted_edges = set() 
-        self.speed_factor = random.uniform(0.9, 1.1)
+        
+        # --- SPEED PERSISTENCE ---
+        # If loading from JSON, use the saved factor.
+        # If new agent, pick a discrete random value (0.9 or 1.0).
+        if speed_factor is not None:
+            self.speed_factor = speed_factor
+        else:
+            self.speed_factor = random.choice([0.9, 1.0])
 
     def reset_state_for_next_iteration(self):
         self.has_arrived = False
@@ -155,7 +162,7 @@ class Rickshaw:
         
         for other in all_agents:
             if other.id == self.id: continue
-            if other.has_arrived: continue  # <--- FIXED: Ignore parked agents
+            if other.has_arrived: continue  # Ignore parked agents
             
             # Must be on the same edge (Start -> End)
             if (other.current_node == self.current_node and 
@@ -212,7 +219,7 @@ class Rickshaw:
 
         stop_trigger = False
 
-        # 2. Check Traffic Lights (Only relevant if we are near the intersection)
+        # 2. Check Traffic Lights
         if traffic_manager and traffic_manager.active and not self.reversing:
             if self.progress > 0.85:
                 signal = traffic_manager.get_signal(self.current_node, self.target_node)
@@ -223,7 +230,6 @@ class Rickshaw:
                         stop_trigger = True
 
         # 3. Check Queue/Gap Ahead (INTELLIGENT BRAKING)
-        # This overrides traffic lights. Even if light is Green, if car ahead is stopped, we stop.
         if not self.reversing:
             agent_ahead, dist_ahead = self._get_agent_ahead(all_agents)
             if agent_ahead:
@@ -235,7 +241,6 @@ class Rickshaw:
         # --- APPLY MOVEMENT ---
         
         if self.reversing:
-            # Reversing logic remains same
             self.progress -= (desired_speed * 0.8) * dt
             if self.progress <= 0.0:
                 self.progress = 0.0
@@ -253,7 +258,6 @@ class Rickshaw:
             self.progress += current_speed * dt
             
             # Hard Stop at light (Clamp progress)
-            # Only clamp if stopped by LIGHT, not by car ahead
             if traffic_manager and traffic_manager.active:
                 signal = traffic_manager.get_signal(self.current_node, self.target_node)
                 if signal == "RED" and self.progress > 0.92:
