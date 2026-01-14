@@ -1,4 +1,4 @@
-# main.py (Full Update)
+# main.py
 import pygame
 import sys
 import config as c
@@ -13,11 +13,6 @@ def main():
     running = True
     while running:
         raw_dt = clock.tick(c.FPS) / 1000.0
-        
-        # --- FIXED TIME STEP (FIX 3) ---
-        # We ignore raw_dt for physics calculations to prevent "Butterfly Effect" drift.
-        # This ensures that 1 second of sim time is ALWAYS processed as exact mathematical steps.
-        # We multiply by sim_speed so the user can still speed up the simulation UI.
         FIXED_STEP = 1.0 / c.FPS
         
         if vis.is_paused:
@@ -28,28 +23,23 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            
             elif event.type == pygame.VIDEORESIZE:
                 vis.handle_resize(event)
-
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    running = False
-                if event.key == pygame.K_SPACE:
-                    vis.toggle_pause()
+                if event.key == pygame.K_ESCAPE: running = False
+                if event.key == pygame.K_SPACE: vis.toggle_pause()
 
             # --- UI EVENT UNPACKING ---
             new_agent_count, next_iter, toggle_lights, reset_triggered = vis.handle_ui_events(event)
             
             if reset_triggered:
                 engine.reset_simulation()
-            
-            # Only set agent count if NOT resetting (prevents conflict)
             elif new_agent_count is not None:
                 engine.set_agent_count(new_agent_count)
             
             if next_iter:
-                engine.trigger_next_iteration()
+                # Pass the Path Constant flag from Visualizer to Engine
+                engine.trigger_next_iteration(path_constant=vis.path_constant)
 
             if toggle_lights:
                 engine.toggle_traffic_lights()

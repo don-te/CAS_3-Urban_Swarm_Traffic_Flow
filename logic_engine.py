@@ -17,7 +17,7 @@ class SimulationEngine:
         
         # --- JSON SCENARIO PERSISTENCE ---
         self.scenario_file = "agent_scenario.json"
-        self.scenario_configs = [] # Local mirror of JSON data
+        self.scenario_configs = [] 
         
         all_lats = [d['pos'][1] for n, d in self.city.G.nodes(data=True)]
         all_lons = [d['pos'][0] for n, d in self.city.G.nodes(data=True)]
@@ -27,7 +27,6 @@ class SimulationEngine:
         self.collision_history = []
         self.current_iteration = 1
         
-        # Initialize: Load from file if exists, else start default
         if os.path.exists(self.scenario_file):
             print(f"Loading existing scenario from {self.scenario_file}")
             self.load_scenario_from_disk()
@@ -39,86 +38,91 @@ class SimulationEngine:
         current_count = len(self.rickshaws)
         diff = target_count - current_count
 
-        # --- ADDING AGENTS ---
         if diff > 0:
             all_edges = list(self.city.G.edges())
             all_nodes = list(self.city.G.nodes())
 
             for _ in range(diff):
-                # 1. Generate Random Start
                 u, v = random.choice(all_edges)
                 spawn_progress = random.uniform(0.05, 0.90)
                 
-                # Init variables
-                d_node = None
-                d_edge = None
-                d_prog = None
-                
-                # 2. Pick Destination
-                if random.random() < 0.25:
-                    dest_type = "NODE"
-                    occupied = {a.final_dest_node for a in self.rickshaws if a.dest_type == "NODE" and a.final_dest_node}
-                    candidates = [n for n in all_nodes if n != u and n not in occupied]
-                    
-                    if candidates:
-                        d_node = random.choice(candidates)
-                    else:
-                        dest_type = "EDGE" # Fallback if no nodes available
-                else:
-                    dest_type = "EDGE"
-                
-                # 3. Handle EDGE Destination
-                if dest_type == "EDGE":
-                    valid_edges = [e for e in all_edges if e != (u, v)]
-                    if valid_edges:
-                        d_edge = random.choice(valid_edges)
-                    else:
-                        d_edge = (u, v)
-                    d_prog = random.uniform(0.2, 0.8)
+                # Use helper to pick dest
+                dtype, dnode, dedge, dprog = self._generate_new_destination_config(u)
 
-                # 4. Create the Agent (It will assign internal speed_factor)
                 new_id = len(self.rickshaws)
                 new_agent = Rickshaw(
                     new_id, self.city, 
                     start_node=u, initial_target=v, initial_progress=spawn_progress,
-                    dest_type=dest_type, dest_node=d_node, dest_edge=d_edge, dest_progress=d_prog
+                    dest_type=dtype, dest_node=dnode, dest_edge=dedge, dest_progress=dprog
                 )
                 
-                # 5. Create Config Entry (Include Speed Factor!)
                 agent_config = {
                     "id": new_id,
                     "start_node": u,
                     "initial_target": v,
                     "initial_progress": spawn_progress,
-                    "dest_type": dest_type,
-                    "dest_node": d_node,
-                    "dest_edge": d_edge,
-                    "dest_progress": d_prog,
+                    "dest_type": dtype,
+                    "dest_node": dnode,
+                    "dest_edge": dedge,
+                    "dest_progress": dprog,
                     "speed_factor": new_agent.speed_factor
                 }
                 
                 self.scenario_configs.append(agent_config)
                 self.rickshaws.append(new_agent)
 
-        # --- REMOVING AGENTS ---
         elif diff < 0:
-            # 1. Remove from Sim
             to_remove = self.rickshaws[target_count:]
             for agent in to_remove:
-                # Remove load from roads
                 if agent.current_edge:
                     u, v = agent.current_edge
-                    if self.city.G.has_edge(u, v):
-                        if self.city.G[u][v]['current_load'] > 0:
-                            self.city.G[u][v]['current_load'] -= 1
+                    if self.city.G.has_edge(u, v) and self.city.G[u][v]['current_load'] > 0:
+                        self.city.G[u][v]['current_load'] -= 1
             
             self.rickshaws = self.rickshaws[:target_count]
-            
-            # 2. Remove from Configs
             self.scenario_configs = self.scenario_configs[:target_count]
 
-        # --- SAVE TO DISK ---
         self.save_scenario_to_disk()
+
+    def _get_random_neighbor(self, node):
+        try:
+            neighbors = list(self.city.G.neighbors(node))
+            if neighbors: return random.choice(neighbors)
+        except:
+            pass
+        return None
+
+    def _generate_new_destination_config(self, start_node, exclude_nodes=None):
+        """Helper to pick a random destination (Node or Edge)."""
+        if exclude_nodes is None: exclude_nodes = set()
+        
+        all_nodes = list(self.city.G.nodes())
+        all_edges = list(self.city.G.edges())
+        
+        # 25% chance for precise Node destination, 75% for Edge destination
+        dest_type = "NODE" if random.random() < 0.25 else "EDGE"
+        d_node = None
+        d_edge = None
+        d_prog = None
+
+        if dest_type == "NODE":
+            # Don't pick start node or excluded nodes
+            candidates = [n for n in all_nodes if n != start_node and n not in exclude_nodes]
+            if candidates:
+                d_node = random.choice(candidates)
+            else:
+                dest_type = "EDGE" # Fallback
+
+        if dest_type == "EDGE":
+            # Don't pick an edge that contains the start node (immediate U-turn or already there)
+            valid_edges = [e for e in all_edges if e[0] != start_node and e[1] != start_node]
+            if valid_edges:
+                d_edge = random.choice(valid_edges)
+            else:
+                d_edge = random.choice(all_edges)
+            d_prog = random.uniform(0.2, 0.8)
+            
+        return dest_type, d_node, d_edge, d_prog
 
     def save_scenario_to_disk(self):
         try:
@@ -128,10 +132,7 @@ class SimulationEngine:
             print(f"Error saving scenario: {e}")
 
     def load_scenario_from_disk(self):
-        """
-        Clears the board and respawns agents using the JSON file.
-        """
-        # 1. Clear existing load
+        # Clear existing load first
         for agent in self.rickshaws:
             if agent.current_edge:
                 u, v = agent.current_edge
@@ -139,13 +140,10 @@ class SimulationEngine:
                     self.city.G[u][v]['current_load'] -= 1
         
         self.rickshaws = []
-        
-        # 2. Read File
         try:
             with open(self.scenario_file, 'r') as f:
                 self.scenario_configs = json.load(f)
                 
-            # 3. Respawn Agents
             for config in self.scenario_configs:
                 new_agent = Rickshaw(
                     config['id'], self.city,
@@ -156,38 +154,96 @@ class SimulationEngine:
                     dest_node=config['dest_node'],
                     dest_edge=config['dest_edge'],
                     dest_progress=config['dest_progress'],
-                    speed_factor=config.get('speed_factor', 1.0) # Load persisted speed
+                    speed_factor=config.get('speed_factor', 1.0)
                 )
                 self.rickshaws.append(new_agent)
-                
         except (FileNotFoundError, json.JSONDecodeError):
             print("Error loading scenario file. Resetting to empty.")
             self.scenario_configs = []
             self.set_agent_count(c.AGENT_COUNT)
 
     def reset_simulation(self):
-        """Hard reset: Reloads from JSON."""
         self.collision_count = 0
         self.collision_history = []
         self.current_iteration = 1
-        
-        # Re-create traffic manager (Timers are still random per your request)
         self.traffic_manager = TrafficManager(self.city)
-        
         print("--- SIMULATION RESET (Reloading from JSON) ---")
         self.load_scenario_from_disk()
 
-    def trigger_next_iteration(self):
+    def trigger_next_iteration(self, path_constant=True):
         # 1. Archive Stats
         record = f"Iter {self.current_iteration} Collisions: {self.collision_count}"
         self.collision_history.append(record)
         
-        # 2. Reset Counter
+        # 2. Handle Continuous Path (CHAIN MODE)
+        if not path_constant:
+            print(f"--- CHAINING PATHS FOR ITERATION {self.current_iteration + 1} ---")
+            new_configs = []
+            occupied_dests = set()
+
+            for cfg in self.scenario_configs:
+                prev_dest_type = cfg.get('dest_type', 'NODE')
+                
+                # --- CALCULATE EXACT START POINT ---
+                next_start_node = None
+                next_initial_target = None
+                next_initial_progress = 0.0
+
+                if prev_dest_type == "NODE":
+                    # Finished at a NODE
+                    next_start_node = cfg.get('dest_node', cfg['start_node'])
+                    # Needs to pick a new street to leave the intersection
+                    next_initial_target = self._get_random_neighbor(next_start_node)
+                    next_initial_progress = 0.0
+                
+                elif prev_dest_type == "EDGE":
+                    # Finished MID-STREET
+                    edge = cfg.get('dest_edge')
+                    if edge:
+                        # CORRECT FIX: Start exactly where they parked
+                        next_start_node = edge[0]
+                        next_initial_target = edge[1]
+                        next_initial_progress = cfg.get('dest_progress', 0.5)
+                    else:
+                        # Fallback
+                        next_start_node = cfg['start_node']
+                        next_initial_target = cfg['initial_target']
+                        next_initial_progress = 0.0
+
+                # Validate Target (Safety Check)
+                if not next_initial_target:
+                    next_initial_target = self._get_random_neighbor(next_start_node)
+
+                # --- GENERATE NEW DESTINATION ---
+                # We start looking for a new destination from the 'next_start_node'
+                dtype, dnode, dedge, dprog = self._generate_new_destination_config(
+                     start_node=next_start_node, 
+                     exclude_nodes=occupied_dests
+                )
+                
+                if dtype == "NODE" and dnode: occupied_dests.add(dnode)
+
+                new_cfg = {
+                    "id": cfg['id'],
+                    "start_node": next_start_node,
+                    "initial_target": next_initial_target,
+                    "initial_progress": next_initial_progress, # Preserves the "parking spot"
+                    "dest_type": dtype,
+                    "dest_node": dnode,
+                    "dest_edge": dedge,
+                    "dest_progress": dprog,
+                    "speed_factor": cfg.get('speed_factor', 1.0)
+                }
+                new_configs.append(new_cfg)
+            
+            # Save chain
+            self.scenario_configs = new_configs
+            self.save_scenario_to_disk()
+
+        # 3. Reload from Disk
         self.collision_count = 0
         self.current_iteration += 1
-        
-        # 3. RELOAD
-        print(f"--- STARTED ITERATION {self.current_iteration} (Reloading from JSON) ---")
+        print(f"--- STARTED ITERATION {self.current_iteration} ---")
         self.load_scenario_from_disk()
 
     def toggle_traffic_lights(self):
