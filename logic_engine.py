@@ -247,7 +247,8 @@ class SimulationEngine:
         self.load_scenario_from_disk()
 
     def toggle_traffic_lights(self):
-        self.traffic_manager.toggle()
+        # The TrafficManager now handles the 3-state toggle internally
+        self.traffic_manager.toggle_mode()
 
     def _haversine_distance(self, pos1, pos2):
         lon1, lat1 = pos1[0], pos1[1]
