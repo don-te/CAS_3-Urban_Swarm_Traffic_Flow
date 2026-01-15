@@ -53,4 +53,6 @@ The codebase is modular, separating graph topology, agent logic, and visualizati
 
 ### 1. Install Dependencies
 ```bash
-pip install -r requirements.txt
+pip install -r requrements.txt
+
+python main.py
