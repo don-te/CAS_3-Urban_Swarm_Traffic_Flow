@@ -7,12 +7,10 @@ import os
 import config as c
 from city import CityGraph
 from rickshaw import Rickshaw
-from traffic_control import TrafficManager
 
 class SimulationEngine:
     def __init__(self):
         self.city = CityGraph(rows=6, cols=6, block_size_meters=150)
-        self.traffic_manager = TrafficManager(self.city)
         self.rickshaws = []
         
         # --- JSON SCENARIO PERSISTENCE ---
@@ -166,7 +164,6 @@ class SimulationEngine:
         self.collision_count = 0
         self.collision_history = []
         self.current_iteration = 1
-        self.traffic_manager = TrafficManager(self.city)
         print("--- SIMULATION RESET (Reloading from JSON) ---")
         self.load_scenario_from_disk()
 
@@ -246,10 +243,6 @@ class SimulationEngine:
         print(f"--- STARTED ITERATION {self.current_iteration} ---")
         self.load_scenario_from_disk()
 
-    def toggle_traffic_lights(self):
-        # The TrafficManager now handles the 3-state toggle internally
-        self.traffic_manager.toggle_mode()
-
     def _haversine_distance(self, pos1, pos2):
         lon1, lat1 = pos1[0], pos1[1]
         lon2, lat2 = pos2[0], pos2[1]
@@ -294,7 +287,6 @@ class SimulationEngine:
                     if crash: self.collision_count += 1
 
     def update(self, dt):
-        self.traffic_manager.update(dt)
         for agent in self.rickshaws:
-            agent.move(dt, self.rickshaws, self.traffic_manager)
+            agent.move(dt, self.rickshaws)
         self.check_collisions()

@@ -176,7 +176,7 @@ class Rickshaw:
                         target = other
         return target, closest_dist
 
-    def move(self, dt, all_agents, traffic_manager=None):
+    def move(self, dt, all_agents):
         if self.has_arrived: return
         
         # --- TIMERS ---
@@ -219,17 +219,7 @@ class Rickshaw:
 
         stop_trigger = False
 
-        # 2. Check Traffic Lights
-        if traffic_manager and traffic_manager.active and not self.reversing:
-            if self.progress > 0.85:
-                signal = traffic_manager.get_signal(self.current_node, self.target_node)
-                if signal == "RED":
-                    stop_trigger = True
-                elif signal == "YELLOW":
-                    if self.progress < 0.90:
-                        stop_trigger = True
-
-        # 3. Check Queue/Gap Ahead (INTELLIGENT BRAKING)
+        # 2. Check Queue/Gap Ahead (INTELLIGENT BRAKING)
         if not self.reversing:
             agent_ahead, dist_ahead = self._get_agent_ahead(all_agents)
             if agent_ahead:
@@ -257,12 +247,6 @@ class Rickshaw:
             
             self.progress += current_speed * dt
             
-            # Hard Stop at light (Clamp progress)
-            if traffic_manager and traffic_manager.active:
-                signal = traffic_manager.get_signal(self.current_node, self.target_node)
-                if signal == "RED" and self.progress > 0.92:
-                    self.progress = 0.92
-
             # --- ARRIVAL CHECK: EDGE TYPE ---
             if self.dest_type == "EDGE":
                 is_dest_edge = (self.current_node == self.dest_edge[0] and self.target_node == self.dest_edge[1])

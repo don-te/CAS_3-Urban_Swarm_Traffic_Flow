@@ -4,7 +4,6 @@ import math
 import config as c
 from utils import map_coords_to_screen, draw_triangle
 from ui import Slider, Button
-from traffic_control import TrafficManager
 
 class Visualizer:
     def __init__(self, bounds):
@@ -25,7 +24,6 @@ class Visualizer:
         
         self.font_title = pygame.font.SysFont("Arial", 24, bold=True)
         self.font_stats = pygame.font.SysFont("Arial", 18)
-        # CHANGED: Increased font size from 14 to 18 to match header
         self.font_small = pygame.font.SysFont("Arial", 18) 
 
         # --- UI ELEMENTS ---
@@ -49,16 +47,9 @@ class Visualizer:
             color=(200, 60, 60), hover_color=(230, 80, 80)
         )
 
-        # Row 3: Lights (Wide, below Reset)
-        self.traffic_btn = Button(
-            x=panel_x, y=150, w=210, h=40,
-            text="LIGHTS: OFF", callback=self._dummy_callback,
-            color=(100, 100, 100), hover_color=(120, 120, 120)
-        )
-
-        # Row 4: Path Constant Toggle (Wide)
+        # Row 3: Path Constant Toggle (Wide)
         self.path_btn = Button(
-            x=panel_x, y=200, w=210, h=35,
+            x=panel_x, y=150, w=210, h=35,
             text="PATH: CONST", callback=self.toggle_path_mode,
             color=(60, 180, 60), hover_color=(80, 200, 80)
         )
@@ -105,7 +96,7 @@ class Visualizer:
 
     def handle_ui_events(self, event):
         """
-        Returns tuple: (new_agent_count, next_iteration_triggered, toggle_lights_clicked, reset_triggered)
+        Returns tuple: (new_agent_count, next_iteration_triggered, reset_triggered)
         """
         self.play_btn.handle_event(event)
         self.path_btn.handle_event(event) 
@@ -114,22 +105,6 @@ class Visualizer:
         if self.next_iter_btn.handle_event(event):
             next_iter_triggered = True
 
-        toggle_lights = False
-        if self.traffic_btn.handle_event(event):
-            toggle_lights = True
-            
-            # Update Button Visuals based on PREDICTED next state
-            txt = self.traffic_btn.text
-            if "OFF" in txt:
-                self.traffic_btn.text = "LIGHTS: 2-WAY"
-                self.traffic_btn.color = (200, 200, 0) # Gold
-            elif "2-WAY" in txt:
-                self.traffic_btn.text = "LIGHTS: 1-WAY"
-                self.traffic_btn.color = (0, 150, 255) # Blue
-            else:
-                self.traffic_btn.text = "LIGHTS: OFF"
-                self.traffic_btn.color = (100, 100, 100) # Grey
-
         reset_triggered = False
         if self.reset_btn.handle_event(event):
             reset_triggered = True
@@ -137,15 +112,13 @@ class Visualizer:
             self.is_paused = True
             self.play_btn.text = "START"
             self.play_btn.color = (60, 200, 60)
-            self.traffic_btn.text = "LIGHTS: OFF"
-            self.traffic_btn.color = (100, 100, 100)
 
         new_speed = self.speed_slider.handle_event(event)
         if new_speed is not None: self.sim_speed = new_speed
         
         new_agent_count = self.agent_slider.handle_event(event)
         
-        return new_agent_count, next_iter_triggered, toggle_lights, reset_triggered
+        return new_agent_count, next_iter_triggered, reset_triggered
 
     def _get_perp_offset(self, start, end, magnitude):
         dx = end[0] - start[0]
@@ -155,64 +128,7 @@ class Visualizer:
         ux, uy = dx / length, dy / length
         return (uy * magnitude, -ux * magnitude)
 
-    def draw_traffic_lights(self, city, traffic_manager, to_screen_func):
-        if not traffic_manager.active: return
-        
-        for node_id, data in traffic_manager.intersections.items():
-            phase = data['phase']
-            state = data['state']
-            groups = data['groups']
-            mode = traffic_manager.mode
-
-            def get_col(is_active):
-                if not is_active: return c.COLOR_JAM # Red
-                if state == "GREEN": return (0, 255, 0)
-                return (255, 255, 0)
-
-            active_n = False
-            active_s = False
-            active_e = False
-            active_w = False
-
-            if mode == "TWO_WAY":
-                if phase == 0: active_n = active_s = True
-                else: active_e = active_w = True
-            else: 
-                if phase == 0: active_n = True
-                elif phase == 1: active_e = True
-                elif phase == 2: active_s = True
-                elif phase == 3: active_w = True
-
-            for u in groups['north_inc']:
-                self._draw_stop_line(city, u, node_id, get_col(active_n), to_screen_func)
-            for u in groups['south_inc']:
-                self._draw_stop_line(city, u, node_id, get_col(active_s), to_screen_func)
-            for u in groups['east_inc']:
-                self._draw_stop_line(city, u, node_id, get_col(active_e), to_screen_func)
-            for u in groups['west_inc']:
-                self._draw_stop_line(city, u, node_id, get_col(active_w), to_screen_func)
-
-    def _draw_stop_line(self, city, u, v, color, to_screen):
-        u_pos = city.G.nodes[u]['pos']
-        v_pos = city.G.nodes[v]['pos']
-        s = to_screen(u_pos[1], u_pos[0])
-        e = to_screen(v_pos[1], v_pos[0])
-        
-        ox, oy = self._get_perp_offset(s, e, c.LANE_OFFSET)
-        lane_s = (s[0] + ox, s[1] + oy)
-        lane_e = (e[0] + ox, e[1] + oy)
-        
-        stop_ratio = 0.92
-        stop_x = lane_s[0] + (lane_e[0] - lane_s[0]) * stop_ratio
-        stop_y = lane_s[1] + (lane_e[1] - lane_s[1]) * stop_ratio
-        
-        px, py = self._get_perp_offset(lane_s, lane_e, 10) 
-        p1 = (stop_x + px, stop_y + py)
-        p2 = (stop_x - px, stop_y - py)
-        
-        pygame.draw.line(self.sim_surface, color, p1, p2, 4)
-
-    def draw(self, city, rickshaws, total_collisions, history_list, traffic_manager=None):
+    def draw(self, city, rickshaws, total_collisions, history_list):
         self.screen.fill((20, 20, 20)) 
         self.sim_surface.fill(c.BG_COLOR)
 
@@ -255,10 +171,6 @@ class Visualizer:
             pos = data['pos']
             s_pos = to_screen(pos[1], pos[0])
             pygame.draw.circle(self.sim_surface, c.COLOR_ASPHALT, s_pos, int(c.ROAD_WIDTH/2))
-        
-        # Lights
-        if traffic_manager:
-            self.draw_traffic_lights(city, traffic_manager, to_screen)
 
         # Agents
         for agent in rickshaws:
@@ -300,7 +212,6 @@ class Visualizer:
         self.play_btn.draw(self.screen)
         self.next_iter_btn.draw(self.screen)
         self.reset_btn.draw(self.screen)
-        self.traffic_btn.draw(self.screen)
         self.path_btn.draw(self.screen)
         
         self.agent_slider.draw(self.screen)
@@ -319,10 +230,10 @@ class Visualizer:
         if history_list:
             hist_title = self.font_stats.render("History:", True, (200, 200, 200))
             self.screen.blit(hist_title, (25, y_hist))
-            y_hist += 30 # CHANGED: Increased spacing from 20 to 30 for larger font
+            y_hist += 30 
             for entry in history_list[-15:]:
                 entry_surf = self.font_small.render(entry, True, (150, 150, 150))
                 self.screen.blit(entry_surf, (25, y_hist))
-                y_hist += 25 # CHANGED: Increased line height from 20 to 25
+                y_hist += 25 
 
         pygame.display.flip()

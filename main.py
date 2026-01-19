@@ -30,7 +30,7 @@ def main():
                 if event.key == pygame.K_SPACE: vis.toggle_pause()
 
             # --- UI EVENT UNPACKING ---
-            new_agent_count, next_iter, toggle_lights, reset_triggered = vis.handle_ui_events(event)
+            new_agent_count, next_iter, reset_triggered = vis.handle_ui_events(event)
             
             if reset_triggered:
                 engine.reset_simulation()
@@ -40,14 +40,11 @@ def main():
             if next_iter:
                 # Pass the Path Constant flag from Visualizer to Engine
                 engine.trigger_next_iteration(path_constant=vis.path_constant)
-
-            if toggle_lights:
-                engine.toggle_traffic_lights()
         
         if dt > 0:
             engine.update(dt)
             
-        vis.draw(engine.city, engine.rickshaws, engine.collision_count, engine.collision_history, engine.traffic_manager)
+        vis.draw(engine.city, engine.rickshaws, engine.collision_count, engine.collision_history)
 
     pygame.quit()
     sys.exit()
