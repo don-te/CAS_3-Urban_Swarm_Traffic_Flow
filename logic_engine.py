@@ -17,6 +17,10 @@ class SimulationEngine:
         self.scenario_file = "agent_scenario.json"
         self.scenario_configs = [] 
         
+        # --- PATH HISTORY ---
+        # Dict { agent_id: [ [path1], [path2] ] }
+        self.path_history = {} 
+        
         all_lats = [d['pos'][1] for n, d in self.city.G.nodes(data=True)]
         all_lons = [d['pos'][0] for n, d in self.city.G.nodes(data=True)]
         self.bounds = (min(all_lats), max(all_lats), min(all_lons), max(all_lons))
@@ -48,10 +52,13 @@ class SimulationEngine:
                 dtype, dnode, dedge, dprog = self._generate_new_destination_config(u)
 
                 new_id = len(self.rickshaws)
+                
+                # Pass empty history initially
                 new_agent = Rickshaw(
                     new_id, self.city, 
                     start_node=u, initial_target=v, initial_progress=spawn_progress,
-                    dest_type=dtype, dest_node=dnode, dest_edge=dedge, dest_progress=dprog
+                    dest_type=dtype, dest_node=dnode, dest_edge=dedge, dest_progress=dprog,
+                    forbidden_paths=[]
                 )
                 
                 agent_config = {
@@ -143,8 +150,12 @@ class SimulationEngine:
                 self.scenario_configs = json.load(f)
                 
             for config in self.scenario_configs:
+                aid = config['id']
+                # Retrieve history for this agent
+                history = self.path_history.get(aid, [])
+                
                 new_agent = Rickshaw(
-                    config['id'], self.city,
+                    aid, self.city,
                     start_node=config['start_node'],
                     initial_target=config['initial_target'],
                     initial_progress=config['initial_progress'],
@@ -152,7 +163,8 @@ class SimulationEngine:
                     dest_node=config['dest_node'],
                     dest_edge=config['dest_edge'],
                     dest_progress=config['dest_progress'],
-                    speed_factor=config.get('speed_factor', 1.0)
+                    speed_factor=config.get('speed_factor', 1.0),
+                    forbidden_paths=history
                 )
                 self.rickshaws.append(new_agent)
         except (FileNotFoundError, json.JSONDecodeError):
@@ -164,83 +176,103 @@ class SimulationEngine:
         self.collision_count = 0
         self.collision_history = []
         self.current_iteration = 1
+        self.path_history = {} # Clear history on full reset
         print("--- SIMULATION RESET (Reloading from JSON) ---")
         self.load_scenario_from_disk()
 
-    def trigger_next_iteration(self, path_constant=True):
+    def update_positions(self):
+        """
+        Moves the starting point of the next simulation to the endpoint of the current one.
+        Clears path history because it's a new trip.
+        """
+        print(f"--- UPDATING POSITIONS (Starting new Trip) ---")
+        
+        # Clear history since we are starting a new route completely
+        self.path_history = {}
+        
+        new_configs = []
+        occupied_dests = set()
+
+        for cfg in self.scenario_configs:
+            prev_dest_type = cfg.get('dest_type', 'NODE')
+            
+            # --- CALCULATE EXACT START POINT ---
+            next_start_node = None
+            next_initial_target = None
+            next_initial_progress = 0.0
+
+            if prev_dest_type == "NODE":
+                # Finished at a NODE
+                next_start_node = cfg.get('dest_node', cfg['start_node'])
+                next_initial_target = self._get_random_neighbor(next_start_node)
+                next_initial_progress = 0.0
+            
+            elif prev_dest_type == "EDGE":
+                # Finished MID-STREET
+                edge = cfg.get('dest_edge')
+                if edge:
+                    next_start_node = edge[0]
+                    next_initial_target = edge[1]
+                    next_initial_progress = cfg.get('dest_progress', 0.5)
+                else:
+                    next_start_node = cfg['start_node']
+                    next_initial_target = cfg['initial_target']
+                    next_initial_progress = 0.0
+
+            if not next_initial_target:
+                next_initial_target = self._get_random_neighbor(next_start_node)
+
+            # --- GENERATE NEW DESTINATION ---
+            dtype, dnode, dedge, dprog = self._generate_new_destination_config(
+                    start_node=next_start_node, 
+                    exclude_nodes=occupied_dests
+            )
+            
+            if dtype == "NODE" and dnode: occupied_dests.add(dnode)
+
+            new_cfg = {
+                "id": cfg['id'],
+                "start_node": next_start_node,
+                "initial_target": next_initial_target,
+                "initial_progress": next_initial_progress,
+                "dest_type": dtype,
+                "dest_node": dnode,
+                "dest_edge": dedge,
+                "dest_progress": dprog,
+                "speed_factor": cfg.get('speed_factor', 1.0)
+            }
+            new_configs.append(new_cfg)
+        
+        self.scenario_configs = new_configs
+        self.save_scenario_to_disk()
+        
+        # Reload to apply changes
+        self.current_iteration = 1 # Reset iteration count for new trip
+        self.collision_count = 0
+        self.load_scenario_from_disk()
+
+
+    def trigger_next_iteration(self):
+        """
+        Restarts the simulation with the SAME start/end points.
+        BUT updates history so agents pick a DIFFERENT path.
+        """
         # 1. Archive Stats
         record = f"Iter {self.current_iteration} Collisions: {self.collision_count}"
         self.collision_history.append(record)
         
-        # 2. Handle Continuous Path (CHAIN MODE)
-        if not path_constant:
-            print(f"--- CHAINING PATHS FOR ITERATION {self.current_iteration + 1} ---")
-            new_configs = []
-            occupied_dests = set()
+        # 2. Save Paths Used in THIS iteration
+        print(f"--- NEXT ITERATION (Fixed Points, New Paths) ---")
+        
+        for agent in self.rickshaws:
+            if agent.chosen_path:
+                if agent.id not in self.path_history:
+                    self.path_history[agent.id] = []
+                self.path_history[agent.id].append(agent.chosen_path)
 
-            for cfg in self.scenario_configs:
-                prev_dest_type = cfg.get('dest_type', 'NODE')
-                
-                # --- CALCULATE EXACT START POINT ---
-                next_start_node = None
-                next_initial_target = None
-                next_initial_progress = 0.0
-
-                if prev_dest_type == "NODE":
-                    # Finished at a NODE
-                    next_start_node = cfg.get('dest_node', cfg['start_node'])
-                    # Needs to pick a new street to leave the intersection
-                    next_initial_target = self._get_random_neighbor(next_start_node)
-                    next_initial_progress = 0.0
-                
-                elif prev_dest_type == "EDGE":
-                    # Finished MID-STREET
-                    edge = cfg.get('dest_edge')
-                    if edge:
-                        # CORRECT FIX: Start exactly where they parked
-                        next_start_node = edge[0]
-                        next_initial_target = edge[1]
-                        next_initial_progress = cfg.get('dest_progress', 0.5)
-                    else:
-                        # Fallback
-                        next_start_node = cfg['start_node']
-                        next_initial_target = cfg['initial_target']
-                        next_initial_progress = 0.0
-
-                # Validate Target (Safety Check)
-                if not next_initial_target:
-                    next_initial_target = self._get_random_neighbor(next_start_node)
-
-                # --- GENERATE NEW DESTINATION ---
-                # We start looking for a new destination from the 'next_start_node'
-                dtype, dnode, dedge, dprog = self._generate_new_destination_config(
-                     start_node=next_start_node, 
-                     exclude_nodes=occupied_dests
-                )
-                
-                if dtype == "NODE" and dnode: occupied_dests.add(dnode)
-
-                new_cfg = {
-                    "id": cfg['id'],
-                    "start_node": next_start_node,
-                    "initial_target": next_initial_target,
-                    "initial_progress": next_initial_progress, # Preserves the "parking spot"
-                    "dest_type": dtype,
-                    "dest_node": dnode,
-                    "dest_edge": dedge,
-                    "dest_progress": dprog,
-                    "speed_factor": cfg.get('speed_factor', 1.0)
-                }
-                new_configs.append(new_cfg)
-            
-            # Save chain
-            self.scenario_configs = new_configs
-            self.save_scenario_to_disk()
-
-        # 3. Reload from Disk
+        # 3. Reload from Disk (Restores original Start/End)
         self.collision_count = 0
         self.current_iteration += 1
-        print(f"--- STARTED ITERATION {self.current_iteration} ---")
         self.load_scenario_from_disk()
 
     def _haversine_distance(self, pos1, pos2):

@@ -16,7 +16,7 @@ class Visualizer:
         
         self.is_paused = True
         self.sim_speed = 1.0
-        self.path_constant = True 
+        # self.path_constant = True  <-- REMOVED
         
         # UI Setup
         self.sidebar_width = 250
@@ -40,21 +40,21 @@ class Visualizer:
             color=(60, 100, 200), hover_color=(80, 120, 230)
         )
 
-        # Row 2: Reset (Now Wide and on its own row)
+        # Row 2: Reset (Now Wide)
         self.reset_btn = Button(
             x=panel_x, y=100, w=210, h=40,
             text="RESET", callback=self._dummy_callback,
             color=(200, 60, 60), hover_color=(230, 80, 80)
         )
 
-        # Row 3: Path Constant Toggle (Wide)
-        self.path_btn = Button(
+        # Row 3: Update Position (NEW BUTTON)
+        self.update_pos_btn = Button(
             x=panel_x, y=150, w=210, h=35,
-            text="PATH: CONST", callback=self.toggle_path_mode,
-            color=(60, 180, 60), hover_color=(80, 200, 80)
+            text="UPDATE POSITION", callback=self._dummy_callback,
+            color=(220, 140, 20), hover_color=(240, 160, 40)
         )
 
-        # Sliders (Shifted Down to accommodate new layout)
+        # Sliders
         self.agent_slider = Slider(
             x=panel_x, y=260, w=200, h=10,
             min_val=c.MIN_AGENTS, max_val=c.MAX_AGENTS, start_val=c.AGENT_COUNT,
@@ -80,26 +80,16 @@ class Visualizer:
             self.play_btn.color = (200, 60, 60)
             self.play_btn.hover_color = (230, 80, 80)
 
-    def toggle_path_mode(self):
-        self.path_constant = not self.path_constant
-        if self.path_constant:
-            self.path_btn.text = "PATH: CONST"
-            self.path_btn.color = (60, 180, 60) # Green
-            self.path_btn.hover_color = (80, 200, 80)
-        else:
-            self.path_btn.text = "PATH≠CONSTANT" 
-            self.path_btn.color = (220, 140, 20) # Orange
-            self.path_btn.hover_color = (240, 160, 40)
+    # Removed toggle_path_mode
 
     def handle_resize(self, event):
         self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
 
     def handle_ui_events(self, event):
         """
-        Returns tuple: (new_agent_count, next_iteration_triggered, reset_triggered)
+        Returns tuple: (new_agent_count, next_iter_triggered, reset_triggered, update_pos_triggered)
         """
         self.play_btn.handle_event(event)
-        self.path_btn.handle_event(event) 
         
         next_iter_triggered = False
         if self.next_iter_btn.handle_event(event):
@@ -113,12 +103,16 @@ class Visualizer:
             self.play_btn.text = "START"
             self.play_btn.color = (60, 200, 60)
 
+        update_pos_triggered = False
+        if self.update_pos_btn.handle_event(event):
+            update_pos_triggered = True
+
         new_speed = self.speed_slider.handle_event(event)
         if new_speed is not None: self.sim_speed = new_speed
         
         new_agent_count = self.agent_slider.handle_event(event)
         
-        return new_agent_count, next_iter_triggered, reset_triggered
+        return new_agent_count, next_iter_triggered, reset_triggered, update_pos_triggered
 
     def _get_perp_offset(self, start, end, magnitude):
         dx = end[0] - start[0]
@@ -212,7 +206,7 @@ class Visualizer:
         self.play_btn.draw(self.screen)
         self.next_iter_btn.draw(self.screen)
         self.reset_btn.draw(self.screen)
-        self.path_btn.draw(self.screen)
+        self.update_pos_btn.draw(self.screen) # Changed from path_btn
         
         self.agent_slider.draw(self.screen)
         self.speed_slider.draw(self.screen)

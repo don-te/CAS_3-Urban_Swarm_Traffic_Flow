@@ -30,16 +30,19 @@ def main():
                 if event.key == pygame.K_SPACE: vis.toggle_pause()
 
             # --- UI EVENT UNPACKING ---
-            new_agent_count, next_iter, reset_triggered = vis.handle_ui_events(event)
+            # Updated signature to receive update_pos_triggered
+            new_agent_count, next_iter, reset_triggered, update_pos_triggered = vis.handle_ui_events(event)
             
             if reset_triggered:
                 engine.reset_simulation()
             elif new_agent_count is not None:
                 engine.set_agent_count(new_agent_count)
             
+            if update_pos_triggered:
+                engine.update_positions()
+
             if next_iter:
-                # Pass the Path Constant flag from Visualizer to Engine
-                engine.trigger_next_iteration(path_constant=vis.path_constant)
+                engine.trigger_next_iteration()
         
         if dt > 0:
             engine.update(dt)

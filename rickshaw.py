@@ -2,12 +2,14 @@
 import networkx as nx
 import random
 import math 
+import itertools
 import config as c
 
 class Rickshaw:
     def __init__(self, agent_id, city_graph, start_node=None, 
                  dest_type="NODE", dest_node=None, dest_edge=None, dest_progress=None, 
-                 initial_target=None, initial_progress=0.0, speed_factor=None):
+                 initial_target=None, initial_progress=0.0, speed_factor=None,
+                 forbidden_paths=None):
         self.id = agent_id
         self.city = city_graph
         self.G = city_graph.G
@@ -21,6 +23,10 @@ class Rickshaw:
         self.dest_edge = dest_edge
         self.dest_progress = dest_progress
         
+        # Path History (List of lists of nodes)
+        self.forbidden_paths = forbidden_paths if forbidden_paths else []
+        self.chosen_path = [] # Store the path we actually decide to take
+
         if self.dest_type == "NODE":
             self.nav_target_node = self.final_dest_node
         else:
@@ -44,8 +50,6 @@ class Rickshaw:
         self.blacklisted_edges = set() 
         
         # --- SPEED PERSISTENCE ---
-        # If loading from JSON, use the saved factor.
-        # If new agent, pick a discrete random value (0.9 or 1.0).
         if speed_factor is not None:
             self.speed_factor = speed_factor
         else:
@@ -77,6 +81,7 @@ class Rickshaw:
             self.current_edge = None
 
     def _pick_new_destination(self, all_agents):
+        # 1. Determine Target if not set
         if not self.nav_target_node:
             if random.random() < 0.25:
                 self.dest_type = "NODE"
@@ -110,25 +115,57 @@ class Rickshaw:
 
         if not self.nav_target_node: return
 
+        # 2. Calculate Path with "Next Shortest" logic
         try:
             if self.dest_type == "EDGE" and self.current_node == self.nav_target_node:
+                # Already at the start of the target edge
                 self.path = [self.current_node, self.dest_edge[1]]
+                self.chosen_path = list(self.path)
             else:
+                # Apply temporary weights for blacklisted edges (for reversing logic)
                 original_weights = {}
                 for u, v in self.blacklisted_edges:
                     if self.G.has_edge(u, v):
                         original_weights[(u, v)] = self.G[u][v]['weight']
                         self.G[u][v]['weight'] = 999999.0
 
-                self.path = nx.shortest_path(self.G, self.current_node, self.nav_target_node, weight='weight')
-                
+                # --- NEW LOGIC: K-Shortest Paths to avoid history ---
+                # We generate simple paths. K=10 should be enough buffer.
+                try:
+                    path_generator = nx.shortest_simple_paths(self.G, self.current_node, self.nav_target_node, weight='weight')
+                    
+                    found_path = None
+                    # Iterate through k shortest paths
+                    for candidate_path in itertools.islice(path_generator, 10):
+                        # Convert to tuple for comparison if needed, or simple list compare
+                        if candidate_path not in self.forbidden_paths:
+                            found_path = candidate_path
+                            break
+                    
+                    # If all top 10 are forbidden, just take the first one (fallback)
+                    if found_path is None:
+                        found_path = nx.shortest_path(self.G, self.current_node, self.nav_target_node, weight='weight')
+                    
+                    self.path = found_path
+                    self.chosen_path = list(found_path)
+                    
+                except Exception as e:
+                    # Fallback if simple paths fail (e.g. no path)
+                    self.path = []
+
+                # Restore weights
                 for (u, v), w in original_weights.items():
                     self.G[u][v]['weight'] = w
 
+                # If destination is EDGE, append the final node of that edge
                 if self.dest_type == "EDGE" and len(self.path) > 0:
                     if self.path[-1] == self.dest_edge[0]:
                          self.path.append(self.dest_edge[1])
+                         # FIX: Do NOT append to chosen_path here. 
+                         # chosen_path must match exactly what the pathfinder returns (node-to-node).
+                         # self.chosen_path.append(self.dest_edge[1]) 
 
+            # 3. Set Immediate Target
             if len(self.path) > 1:
                 self.target_node = self.path[1]
                 self.progress = 0.0
