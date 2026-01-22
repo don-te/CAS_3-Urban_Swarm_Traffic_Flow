@@ -7,18 +7,16 @@ import os
 import config as c
 from city import CityGraph
 from rickshaw import Rickshaw
+from data_logger import DataLogger
 
 class SimulationEngine:
     def __init__(self):
         self.city = CityGraph(rows=6, cols=6, block_size_meters=150)
         self.rickshaws = []
         
-        # --- JSON SCENARIO PERSISTENCE ---
         self.scenario_file = "agent_scenario.json"
         self.scenario_configs = [] 
         
-        # --- PATH HISTORY ---
-        # Dict { agent_id: [ [path1], [path2] ] }
         self.path_history = {} 
         
         all_lats = [d['pos'][1] for n, d in self.city.G.nodes(data=True)]
@@ -27,8 +25,13 @@ class SimulationEngine:
         
         self.collision_count = 0 
         self.collision_history = []
-        self.current_iteration = 1
         
+        # --- LOGGING COUNTERS ---
+        self.current_iteration = 1
+        self.current_position_id = 1 # <--- NEW: Tracks "Update Position" clicks
+        
+        self.data_logger = DataLogger()
+
         if os.path.exists(self.scenario_file):
             print(f"Loading existing scenario from {self.scenario_file}")
             self.load_scenario_from_disk()
@@ -48,12 +51,10 @@ class SimulationEngine:
                 u, v = random.choice(all_edges)
                 spawn_progress = random.uniform(0.05, 0.90)
                 
-                # Use helper to pick dest
                 dtype, dnode, dedge, dprog = self._generate_new_destination_config(u)
 
                 new_id = len(self.rickshaws)
                 
-                # Pass empty history initially
                 new_agent = Rickshaw(
                     new_id, self.city, 
                     start_node=u, initial_target=v, initial_progress=spawn_progress,
@@ -98,28 +99,24 @@ class SimulationEngine:
         return None
 
     def _generate_new_destination_config(self, start_node, exclude_nodes=None):
-        """Helper to pick a random destination (Node or Edge)."""
         if exclude_nodes is None: exclude_nodes = set()
         
         all_nodes = list(self.city.G.nodes())
         all_edges = list(self.city.G.edges())
         
-        # 25% chance for precise Node destination, 75% for Edge destination
         dest_type = "NODE" if random.random() < 0.25 else "EDGE"
         d_node = None
         d_edge = None
         d_prog = None
 
         if dest_type == "NODE":
-            # Don't pick start node or excluded nodes
             candidates = [n for n in all_nodes if n != start_node and n not in exclude_nodes]
             if candidates:
                 d_node = random.choice(candidates)
             else:
-                dest_type = "EDGE" # Fallback
+                dest_type = "EDGE" 
 
         if dest_type == "EDGE":
-            # Don't pick an edge that contains the start node (immediate U-turn or already there)
             valid_edges = [e for e in all_edges if e[0] != start_node and e[1] != start_node]
             if valid_edges:
                 d_edge = random.choice(valid_edges)
@@ -137,7 +134,6 @@ class SimulationEngine:
             print(f"Error saving scenario: {e}")
 
     def load_scenario_from_disk(self):
-        # Clear existing load first
         for agent in self.rickshaws:
             if agent.current_edge:
                 u, v = agent.current_edge
@@ -151,7 +147,6 @@ class SimulationEngine:
                 
             for config in self.scenario_configs:
                 aid = config['id']
-                # Retrieve history for this agent
                 history = self.path_history.get(aid, [])
                 
                 new_agent = Rickshaw(
@@ -176,19 +171,17 @@ class SimulationEngine:
         self.collision_count = 0
         self.collision_history = []
         self.current_iteration = 1
-        self.path_history = {} # Clear history on full reset
+        self.current_position_id = 1 # Reset global position ID on HARD RESET
+        self.path_history = {} 
         print("--- SIMULATION RESET (Reloading from JSON) ---")
         self.load_scenario_from_disk()
 
     def update_positions(self):
-        """
-        Moves the starting point of the next simulation to the endpoint of the current one.
-        Clears path history because it's a new trip.
-        """
         print(f"--- UPDATING POSITIONS (Starting new Trip) ---")
         
-        # Clear history since we are starting a new route completely
         self.path_history = {}
+        self.current_position_id += 1 # <--- INCREMENT POSITION
+        self.current_iteration = 1    # <--- RESET ITERATION
         
         new_configs = []
         occupied_dests = set()
@@ -196,19 +189,16 @@ class SimulationEngine:
         for cfg in self.scenario_configs:
             prev_dest_type = cfg.get('dest_type', 'NODE')
             
-            # --- CALCULATE EXACT START POINT ---
             next_start_node = None
             next_initial_target = None
             next_initial_progress = 0.0
 
             if prev_dest_type == "NODE":
-                # Finished at a NODE
                 next_start_node = cfg.get('dest_node', cfg['start_node'])
                 next_initial_target = self._get_random_neighbor(next_start_node)
                 next_initial_progress = 0.0
             
             elif prev_dest_type == "EDGE":
-                # Finished MID-STREET
                 edge = cfg.get('dest_edge')
                 if edge:
                     next_start_node = edge[0]
@@ -222,7 +212,6 @@ class SimulationEngine:
             if not next_initial_target:
                 next_initial_target = self._get_random_neighbor(next_start_node)
 
-            # --- GENERATE NEW DESTINATION ---
             dtype, dnode, dedge, dprog = self._generate_new_destination_config(
                     start_node=next_start_node, 
                     exclude_nodes=occupied_dests
@@ -246,22 +235,40 @@ class SimulationEngine:
         self.scenario_configs = new_configs
         self.save_scenario_to_disk()
         
-        # Reload to apply changes
-        self.current_iteration = 1 # Reset iteration count for new trip
         self.collision_count = 0
         self.load_scenario_from_disk()
 
 
     def trigger_next_iteration(self):
-        """
-        Restarts the simulation with the SAME start/end points.
-        BUT updates history so agents pick a DIFFERENT path.
-        """
         # 1. Archive Stats
         record = f"Iter {self.current_iteration} Collisions: {self.collision_count}"
         self.collision_history.append(record)
         
-        # 2. Save Paths Used in THIS iteration
+        # --- NEW LOGGING LOGIC ---
+        block_size = self.city.block_size
+        agent_data_list = []
+        
+        for agent in self.rickshaws:
+            dist_meters = agent.distance_travelled * block_size
+            time_seconds = agent.travel_time
+            
+            # Create row: [id, distance, time]
+            agent_data_list.append([
+                agent.id,
+                round(dist_meters, 2),
+                round(time_seconds, 2)
+            ])
+            
+        # Call the new logger function
+        self.data_logger.log_complex_iteration(
+            pos_id=self.current_position_id,
+            iter_id=self.current_iteration,
+            collision_count=self.collision_count,
+            agent_data_list=agent_data_list
+        )
+        # -------------------------
+        
+        # 2. Save Paths Used
         print(f"--- NEXT ITERATION (Fixed Points, New Paths) ---")
         
         for agent in self.rickshaws:
@@ -270,7 +277,7 @@ class SimulationEngine:
                     self.path_history[agent.id] = []
                 self.path_history[agent.id].append(agent.chosen_path)
 
-        # 3. Reload from Disk (Restores original Start/End)
+        # 3. Reload from Disk
         self.collision_count = 0
         self.current_iteration += 1
         self.load_scenario_from_disk()

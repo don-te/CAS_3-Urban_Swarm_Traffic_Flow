@@ -25,7 +25,7 @@ class Rickshaw:
         
         # Path History (List of lists of nodes)
         self.forbidden_paths = forbidden_paths if forbidden_paths else []
-        self.chosen_path = [] # Store the path we actually decide to take
+        self.chosen_path = [] 
 
         if self.dest_type == "NODE":
             self.nav_target_node = self.final_dest_node
@@ -38,6 +38,10 @@ class Rickshaw:
         self.path = []
         self.current_edge = None 
         
+        # --- METRICS ---
+        self.distance_travelled = 0.0 
+        self.travel_time = 0.0  # <--- [NEW] Tracks total seconds active
+        
         if self.target_node:
             self._enter_edge(self.current_node, self.target_node)
         
@@ -49,23 +53,20 @@ class Rickshaw:
         self.reversing = False          
         self.blacklisted_edges = set() 
         
-        # --- SPEED PERSISTENCE ---
         if speed_factor is not None:
             self.speed_factor = speed_factor
         else:
             self.speed_factor = random.choice([0.9, 1.0])
 
     def reset_state_for_next_iteration(self):
+        # Note: logic_engine usually recreates agents, but if reused:
         self.has_arrived = False
         self.is_crashed = False
         self.crash_timer = 0.0
         self.reversing = False
         self.blacklisted_edges.clear()
-        self.dest_type = None 
-        self.final_dest_node = None
-        self.dest_edge = None
-        self.nav_target_node = None
-        self.path = []
+        self.travel_time = 0.0
+        self.distance_travelled = 0.0
 
     def _enter_edge(self, u, v):
         if self.G.has_edge(u, v):
@@ -81,7 +82,6 @@ class Rickshaw:
             self.current_edge = None
 
     def _pick_new_destination(self, all_agents):
-        # 1. Determine Target if not set
         if not self.nav_target_node:
             if random.random() < 0.25:
                 self.dest_type = "NODE"
@@ -96,10 +96,7 @@ class Rickshaw:
                     if agent.id != self.id and agent.dest_type == "NODE" and agent.final_dest_node:
                         occupied_destinations.add(agent.final_dest_node)
 
-                candidates = [
-                    n for n in all_nodes 
-                    if n != self.current_node and n not in occupied_destinations
-                ]
+                candidates = [n for n in all_nodes if n != self.current_node and n not in occupied_destinations]
                 if candidates:
                     self.final_dest_node = random.choice(candidates)
                     self.nav_target_node = self.final_dest_node
@@ -115,57 +112,38 @@ class Rickshaw:
 
         if not self.nav_target_node: return
 
-        # 2. Calculate Path with "Next Shortest" logic
         try:
             if self.dest_type == "EDGE" and self.current_node == self.nav_target_node:
-                # Already at the start of the target edge
                 self.path = [self.current_node, self.dest_edge[1]]
                 self.chosen_path = list(self.path)
             else:
-                # Apply temporary weights for blacklisted edges (for reversing logic)
                 original_weights = {}
                 for u, v in self.blacklisted_edges:
                     if self.G.has_edge(u, v):
                         original_weights[(u, v)] = self.G[u][v]['weight']
                         self.G[u][v]['weight'] = 999999.0
 
-                # --- NEW LOGIC: K-Shortest Paths to avoid history ---
-                # We generate simple paths. K=10 should be enough buffer.
                 try:
                     path_generator = nx.shortest_simple_paths(self.G, self.current_node, self.nav_target_node, weight='weight')
-                    
                     found_path = None
-                    # Iterate through k shortest paths
                     for candidate_path in itertools.islice(path_generator, 10):
-                        # Convert to tuple for comparison if needed, or simple list compare
                         if candidate_path not in self.forbidden_paths:
                             found_path = candidate_path
                             break
-                    
-                    # If all top 10 are forbidden, just take the first one (fallback)
                     if found_path is None:
                         found_path = nx.shortest_path(self.G, self.current_node, self.nav_target_node, weight='weight')
-                    
                     self.path = found_path
                     self.chosen_path = list(found_path)
-                    
-                except Exception as e:
-                    # Fallback if simple paths fail (e.g. no path)
+                except Exception:
                     self.path = []
 
-                # Restore weights
                 for (u, v), w in original_weights.items():
                     self.G[u][v]['weight'] = w
 
-                # If destination is EDGE, append the final node of that edge
                 if self.dest_type == "EDGE" and len(self.path) > 0:
                     if self.path[-1] == self.dest_edge[0]:
                          self.path.append(self.dest_edge[1])
-                         # FIX: Do NOT append to chosen_path here. 
-                         # chosen_path must match exactly what the pathfinder returns (node-to-node).
-                         # self.chosen_path.append(self.dest_edge[1]) 
 
-            # 3. Set Immediate Target
             if len(self.path) > 1:
                 self.target_node = self.path[1]
                 self.progress = 0.0
@@ -179,33 +157,21 @@ class Rickshaw:
             self.target_node = None
 
     def _detect_blockage(self, all_agents):
-        # Only used for Reversing (Stuck behind a crash)
         if not self.target_node: return False
         for other in all_agents:
             if other.id == self.id: continue
             if other.current_node == self.current_node and other.target_node == self.target_node:
-                # If the guy ahead is CRASHED and close
                 if other.is_crashed and other.progress > self.progress:
                     return True
         return False
 
     def _get_agent_ahead(self, all_agents):
-        """
-        Scans for the closest agent directly in front on the same lane.
-        Ignores agents that have already arrived (parked).
-        """
         closest_dist = 999.0
         target = None
-        
         for other in all_agents:
             if other.id == self.id: continue
-            if other.has_arrived: continue  # Ignore parked agents
-            
-            # Must be on the same edge (Start -> End)
-            if (other.current_node == self.current_node and 
-                other.target_node == self.target_node):
-                
-                # Check if they are ahead of us
+            if other.has_arrived: continue
+            if (other.current_node == self.current_node and other.target_node == self.target_node):
                 if other.progress > self.progress:
                     dist = other.progress - self.progress
                     if dist < closest_dist:
@@ -216,14 +182,19 @@ class Rickshaw:
     def move(self, dt, all_agents):
         if self.has_arrived: return
         
-        # --- TIMERS ---
+        # --- TIME TRACKING ---
+        # Time increases regardless of crash/traffic unless arrived
+        self.travel_time += dt 
+
+        # --- CRASH LOGIC ---
         if self.is_crashed:
             self.crash_timer -= dt
             if self.crash_timer <= 0:
                 self.is_crashed = False
                 self.crash_timer = 0.0
                 self.immunity_timer = 2.0  
-            else: return
+            else: 
+                return # Stop movement logic, but time has already ticked
 
         if self.immunity_timer > 0: self.immunity_timer -= dt
 
@@ -235,7 +206,7 @@ class Rickshaw:
             self._pick_new_destination(all_agents)
             if not self.target_node: return
 
-        # --- REVERSING LOGIC ---
+        # --- REVERSING ---
         if not self.reversing and self.target_node:
              if self._detect_blockage(all_agents):
                 self.reversing = True
@@ -246,29 +217,24 @@ class Rickshaw:
             self.target_node = None
             return
 
-        # --- TRAFFIC LOGIC START ---
-        
-        # 1. Base Speed Calculation
+        # --- SPEED CALC ---
         edge_data = self.G[self.current_node][self.target_node]
         load = edge_data.get('current_load', 1)
         penalty_factor = 1.0 + (load * c.TRAFFIC_PENALTY)
         desired_speed = (c.RICKSHAW_SPEED_BASE * self.speed_factor) / penalty_factor
 
         stop_trigger = False
-
-        # 2. Check Queue/Gap Ahead (INTELLIGENT BRAKING)
         if not self.reversing:
             agent_ahead, dist_ahead = self._get_agent_ahead(all_agents)
-            if agent_ahead:
-                # 0.06 progress is roughly 9 meters (assuming 150m block)
-                SAFE_GAP = 0.06 
-                if dist_ahead < SAFE_GAP:
-                    stop_trigger = True
+            if agent_ahead and dist_ahead < 0.06:
+                stop_trigger = True
 
-        # --- APPLY MOVEMENT ---
-        
+        # --- MOVEMENT ---
         if self.reversing:
-            self.progress -= (desired_speed * 0.8) * dt
+            step_distance = (desired_speed * 0.8) * dt
+            self.progress -= step_distance
+            self.distance_travelled += step_distance 
+            
             if self.progress <= 0.0:
                 self.progress = 0.0
                 self.reversing = False
@@ -282,9 +248,11 @@ class Rickshaw:
             else:
                 current_speed = desired_speed
             
-            self.progress += current_speed * dt
+            step_distance = current_speed * dt
+            self.progress += step_distance
+            self.distance_travelled += step_distance
             
-            # --- ARRIVAL CHECK: EDGE TYPE ---
+            # EDGE Arrival
             if self.dest_type == "EDGE":
                 is_dest_edge = (self.current_node == self.dest_edge[0] and self.target_node == self.dest_edge[1])
                 if is_dest_edge and self.progress >= self.dest_progress:
@@ -293,7 +261,7 @@ class Rickshaw:
                     self._leave_edge()
                     return
 
-            # --- NODE TRANSITION ---
+            # NODE Transition
             if self.progress >= 1.0:
                 self._leave_edge()
                 self.current_node = self.target_node

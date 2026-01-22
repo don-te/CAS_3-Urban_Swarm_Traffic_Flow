@@ -4,30 +4,37 @@ import os
 class DataLogger:
     def __init__(self, filename="simulation_data.csv"):
         self.filename = filename
-        self._initialize_csv()
-
-    def _initialize_csv(self):
-        """Creates the CSV file with headers if it doesn't exist."""
+        # We do NOT initialize headers here anymore because the format is a repeated block structure.
+        # However, if we want to clear the file on start, we can:
         if not os.path.exists(self.filename):
-            try:
-                with open(self.filename, mode='w', newline='') as file:
-                    writer = csv.writer(file)
-                    # Columns requested: Iteration, Number of Agents, Lights, Path Const, Collision Count
-                    writer.writerow(["Iteration", "Number of Agents", "Lights", "Path Const", "Collision Count"])
-                print(f"Created new log file: {self.filename}")
-            except Exception as e:
-                print(f"Error creating CSV: {e}")
+             with open(self.filename, mode='w', newline='') as file:
+                 pass # Create empty file
 
-    def log_iteration(self, iteration, agent_count, light_mode, path_const, collisions):
-        """Appends a row of data to the CSV."""
+    def log_complex_iteration(self, pos_id, iter_id, collision_count, agent_data_list):
+        """
+        Logs a structured block of data for one iteration.
+        agent_data_list: List of dictionaries or tuples [{'id': 1, 'dist': x, 'time': t}, ...]
+        """
         try:
-            # Format Path Const as Yes/No
-            path_str = "Yes" if path_const else "No"
-            
             with open(self.filename, mode='a', newline='') as file:
                 writer = csv.writer(file)
-                writer.writerow([iteration, agent_count, light_mode, path_str, collisions])
                 
-            print(f"Data Logged: Iteration {iteration} | Collisions: {collisions}")
+                # 1. Header Row: Pos : X | Iter : Y | Collisions: Z
+                header_row = [f"Pos : {pos_id}", f"Iter : {iter_id}", f"Collisions: {collision_count}"]
+                writer.writerow(header_row)
+                
+                # 2. Column Names
+                col_names = ["agent_id", "Distance", "Time"]
+                writer.writerow(col_names)
+                
+                # 3. Agent Data Rows
+                for agent_data in agent_data_list:
+                    # Expecting tuple/list: [id, dist, time]
+                    writer.writerow(agent_data)
+                
+                # 4. Blank Line Separator
+                writer.writerow([])
+                
+            print(f"Logged Block: Pos {pos_id} | Iter {iter_id}")
         except Exception as e:
             print(f"Error logging data: {e}")
