@@ -1,320 +1,183 @@
 [
     {
         "id": 0,
-        "start_node": "1-4",
-        "initial_target": "1-5",
-        "initial_progress": 0.0,
+        "start_node": "2-0",
+        "initial_target": "1-0",
+        "initial_progress": 0.4429111560140008,
         "dest_type": "EDGE",
         "dest_node": null,
         "dest_edge": [
-            "3-0",
-            "3-1"
+            "4-3",
+            "4-4"
         ],
-        "dest_progress": 0.6934827872919871,
+        "dest_progress": 0.4944682044365616,
         "speed_factor": 0.9
     },
     {
         "id": 1,
-        "start_node": "4-3",
-        "initial_target": "4-4",
-        "initial_progress": 0.4287265774914085,
+        "start_node": "2-1",
+        "initial_target": "1-1",
+        "initial_progress": 0.0,
         "dest_type": "NODE",
-        "dest_node": "2-5",
+        "dest_node": "0-0",
         "dest_edge": null,
         "dest_progress": null,
         "speed_factor": 0.9
     },
     {
         "id": 2,
-        "start_node": "1-5",
+        "start_node": "0-3",
+        "initial_target": "1-3",
+        "initial_progress": 0.4554914446447544,
+        "dest_type": "EDGE",
+        "dest_node": null,
+        "dest_edge": [
+            "1-4",
+            "1-5"
+        ],
+        "dest_progress": 0.40078603275489455,
+        "speed_factor": 1.0
+    },
+    {
+        "id": 3,
+        "start_node": "2-4",
         "initial_target": "2-5",
-        "initial_progress": 0.7969420413146535,
+        "initial_progress": 0.741493301393221,
         "dest_type": "EDGE",
         "dest_node": null,
         "dest_edge": [
             "5-1",
             "5-2"
         ],
-        "dest_progress": 0.5756549313154876,
-        "speed_factor": 0.9
+        "dest_progress": 0.5298092631503906,
+        "speed_factor": 1.0
     },
     {
-        "id": 3,
-        "start_node": "2-0",
-        "initial_target": "3-0",
-        "initial_progress": 0.42437500640366727,
+        "id": 4,
+        "start_node": "2-1",
+        "initial_target": "2-0",
+        "initial_progress": 0.5891078859834595,
         "dest_type": "NODE",
-        "dest_node": "5-3",
+        "dest_node": "0-3",
         "dest_edge": null,
         "dest_progress": null,
         "speed_factor": 0.9
     },
     {
-        "id": 4,
-        "start_node": "3-2",
-        "initial_target": "3-1",
-        "initial_progress": 0.5732138163608739,
+        "id": 5,
+        "start_node": "5-2",
+        "initial_target": "4-2",
+        "initial_progress": 0.39614442703004143,
         "dest_type": "EDGE",
         "dest_node": null,
         "dest_edge": [
-            "0-4",
-            "1-4"
+            "5-4",
+            "5-5"
         ],
-        "dest_progress": 0.7154943751534306,
+        "dest_progress": 0.7157190525771291,
         "speed_factor": 0.9
     },
     {
-        "id": 5,
-        "start_node": "3-2",
-        "initial_target": "2-2",
-        "initial_progress": 0.3325306265413245,
-        "dest_type": "EDGE",
-        "dest_node": null,
-        "dest_edge": [
-            "3-1",
-            "3-0"
-        ],
-        "dest_progress": 0.4103763095176094,
-        "speed_factor": 1.0
-    },
-    {
         "id": 6,
-        "start_node": "0-0",
-        "initial_target": "0-1",
-        "initial_progress": 0.0,
+        "start_node": "2-1",
+        "initial_target": "2-0",
+        "initial_progress": 0.5717523854365014,
         "dest_type": "EDGE",
         "dest_node": null,
         "dest_edge": [
-            "2-3",
-            "2-2"
+            "0-1",
+            "0-0"
         ],
-        "dest_progress": 0.5671723768068229,
+        "dest_progress": 0.7077730853146595,
         "speed_factor": 0.9
     },
     {
         "id": 7,
-        "start_node": "4-0",
-        "initial_target": "5-0",
-        "initial_progress": 0.0,
+        "start_node": "4-5",
+        "initial_target": "3-5",
+        "initial_progress": 0.4242856285155886,
         "dest_type": "EDGE",
         "dest_node": null,
         "dest_edge": [
-            "5-5",
-            "4-5"
+            "1-2",
+            "0-2"
         ],
-        "dest_progress": 0.7048310535600959,
-        "speed_factor": 0.9
+        "dest_progress": 0.561688493882351,
+        "speed_factor": 1.0
     },
     {
         "id": 8,
-        "start_node": "5-1",
-        "initial_target": "4-1",
-        "initial_progress": 0.0,
-        "dest_type": "EDGE",
-        "dest_node": null,
-        "dest_edge": [
-            "0-4",
-            "0-3"
-        ],
-        "dest_progress": 0.44886546939886485,
+        "start_node": "3-3",
+        "initial_target": "2-3",
+        "initial_progress": 0.5903156220051462,
+        "dest_type": "NODE",
+        "dest_node": "5-0",
+        "dest_edge": null,
+        "dest_progress": null,
         "speed_factor": 0.9
     },
     {
         "id": 9,
         "start_node": "0-3",
         "initial_target": "0-2",
-        "initial_progress": 0.4048735886457506,
+        "initial_progress": 0.0,
         "dest_type": "EDGE",
         "dest_node": null,
         "dest_edge": [
-            "1-1",
-            "0-1"
+            "2-4",
+            "2-5"
         ],
-        "dest_progress": 0.5480358751992747,
+        "dest_progress": 0.40054189264183204,
         "speed_factor": 1.0
     },
     {
         "id": 10,
-        "start_node": "2-4",
-        "initial_target": "3-4",
-        "initial_progress": 0.33873144781477804,
-        "dest_type": "EDGE",
-        "dest_node": null,
-        "dest_edge": [
-            "4-1",
-            "4-2"
-        ],
-        "dest_progress": 0.407092087862032,
+        "start_node": "0-4",
+        "initial_target": "0-3",
+        "initial_progress": 0.4639746473334843,
+        "dest_type": "NODE",
+        "dest_node": "1-1",
+        "dest_edge": null,
+        "dest_progress": null,
         "speed_factor": 1.0
     },
     {
         "id": 11,
-        "start_node": "3-2",
-        "initial_target": "2-2",
-        "initial_progress": 0.6388265329001082,
-        "dest_type": "EDGE",
-        "dest_node": null,
-        "dest_edge": [
-            "3-4",
-            "4-4"
-        ],
-        "dest_progress": 0.6502097959298154,
-        "speed_factor": 1.0
+        "start_node": "5-5",
+        "initial_target": "4-5",
+        "initial_progress": 0.7819616264980542,
+        "dest_type": "NODE",
+        "dest_node": "4-3",
+        "dest_edge": null,
+        "dest_progress": null,
+        "speed_factor": 0.9
     },
     {
         "id": 12,
-        "start_node": "1-2",
-        "initial_target": "0-2",
-        "initial_progress": 0.2324870600272013,
-        "dest_type": "NODE",
-        "dest_node": "4-2",
-        "dest_edge": null,
-        "dest_progress": null,
-        "speed_factor": 0.9
+        "start_node": "5-5",
+        "initial_target": "4-5",
+        "initial_progress": 0.0,
+        "dest_type": "EDGE",
+        "dest_node": null,
+        "dest_edge": [
+            "4-0",
+            "5-0"
+        ],
+        "dest_progress": 0.743360505441693,
+        "speed_factor": 1.0
     },
     {
         "id": 13,
-        "start_node": "5-4",
-        "initial_target": "4-4",
-        "initial_progress": 0.7211469978712257,
+        "start_node": "3-5",
+        "initial_target": "2-5",
+        "initial_progress": 0.5920695078859545,
         "dest_type": "EDGE",
         "dest_node": null,
         "dest_edge": [
-            "5-2",
-            "5-3"
+            "5-0",
+            "4-0"
         ],
-        "dest_progress": 0.227186904138474,
-        "speed_factor": 1.0
-    },
-    {
-        "id": 14,
-        "start_node": "1-2",
-        "initial_target": "1-3",
-        "initial_progress": 0.30079141758958006,
-        "dest_type": "EDGE",
-        "dest_node": null,
-        "dest_edge": [
-            "5-4",
-            "5-3"
-        ],
-        "dest_progress": 0.5095898810138699,
-        "speed_factor": 1.0
-    },
-    {
-        "id": 15,
-        "start_node": "2-1",
-        "initial_target": "2-0",
-        "initial_progress": 0.7768054314835495,
-        "dest_type": "EDGE",
-        "dest_node": null,
-        "dest_edge": [
-            "0-1",
-            "0-2"
-        ],
-        "dest_progress": 0.7191583172484237,
-        "speed_factor": 0.9
-    },
-    {
-        "id": 16,
-        "start_node": "3-3",
-        "initial_target": "3-2",
-        "initial_progress": 0.48917882946754226,
-        "dest_type": "NODE",
-        "dest_node": "3-1",
-        "dest_edge": null,
-        "dest_progress": null,
-        "speed_factor": 1.0
-    },
-    {
-        "id": 17,
-        "start_node": "5-0",
-        "initial_target": "4-0",
-        "initial_progress": 0.0,
-        "dest_type": "EDGE",
-        "dest_node": null,
-        "dest_edge": [
-            "4-5",
-            "3-5"
-        ],
-        "dest_progress": 0.5822975788052824,
-        "speed_factor": 1.0
-    },
-    {
-        "id": 18,
-        "start_node": "5-4",
-        "initial_target": "5-5",
-        "initial_progress": 0.20691058666836887,
-        "dest_type": "EDGE",
-        "dest_node": null,
-        "dest_edge": [
-            "5-1",
-            "5-0"
-        ],
-        "dest_progress": 0.5673922751468572,
-        "speed_factor": 1.0
-    },
-    {
-        "id": 19,
-        "start_node": "3-3",
-        "initial_target": "2-3",
-        "initial_progress": 0.25981400928384063,
-        "dest_type": "EDGE",
-        "dest_node": null,
-        "dest_edge": [
-            "4-0",
-            "4-1"
-        ],
-        "dest_progress": 0.5228725552829439,
-        "speed_factor": 0.9
-    },
-    {
-        "id": 20,
-        "start_node": "5-5",
-        "initial_target": "5-4",
-        "initial_progress": 0.27380991490287576,
-        "dest_type": "NODE",
-        "dest_node": "0-0",
-        "dest_edge": null,
-        "dest_progress": null,
-        "speed_factor": 1.0
-    },
-    {
-        "id": 21,
-        "start_node": "5-2",
-        "initial_target": "5-1",
-        "initial_progress": 0.0,
-        "dest_type": "EDGE",
-        "dest_node": null,
-        "dest_edge": [
-            "4-0",
-            "5-0"
-        ],
-        "dest_progress": 0.228917195247365,
-        "speed_factor": 0.9
-    },
-    {
-        "id": 22,
-        "start_node": "4-5",
-        "initial_target": "5-5",
-        "initial_progress": 0.0,
-        "dest_type": "EDGE",
-        "dest_node": null,
-        "dest_edge": [
-            "3-4",
-            "4-4"
-        ],
-        "dest_progress": 0.6321077112124909,
-        "speed_factor": 0.9
-    },
-    {
-        "id": 23,
-        "start_node": "3-0",
-        "initial_target": "3-1",
-        "initial_progress": 0.6168547413305616,
-        "dest_type": "NODE",
-        "dest_node": "0-3",
-        "dest_edge": null,
-        "dest_progress": null,
+        "dest_progress": 0.5022763390951188,
         "speed_factor": 0.9
     }
 ]
