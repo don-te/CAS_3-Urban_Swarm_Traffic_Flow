@@ -28,7 +28,7 @@ class SimulationEngine:
         
         # --- LOGGING COUNTERS ---
         self.current_iteration = 1
-        self.current_position_id = 1 # <--- NEW: Tracks "Update Position" clicks
+        self.current_position_id = 1 
         
         self.data_logger = DataLogger()
 
@@ -55,6 +55,7 @@ class SimulationEngine:
 
                 new_id = len(self.rickshaws)
                 
+                # Note: No 'forced_path' for brand new agents
                 new_agent = Rickshaw(
                     new_id, self.city, 
                     start_node=u, initial_target=v, initial_progress=spawn_progress,
@@ -71,7 +72,8 @@ class SimulationEngine:
                     "dest_node": dnode,
                     "dest_edge": dedge,
                     "dest_progress": dprog,
-                    "speed_factor": new_agent.speed_factor
+                    "speed_factor": new_agent.speed_factor,
+                    "forced_path": None # Initialize as None
                 }
                 
                 self.scenario_configs.append(agent_config)
@@ -134,6 +136,7 @@ class SimulationEngine:
             print(f"Error saving scenario: {e}")
 
     def load_scenario_from_disk(self):
+        # Clean up existing load
         for agent in self.rickshaws:
             if agent.current_edge:
                 u, v = agent.current_edge
@@ -148,6 +151,7 @@ class SimulationEngine:
             for config in self.scenario_configs:
                 aid = config['id']
                 history = self.path_history.get(aid, [])
+                forced = config.get('forced_path', None) # Load the successful path if it exists
                 
                 new_agent = Rickshaw(
                     aid, self.city,
@@ -159,7 +163,8 @@ class SimulationEngine:
                     dest_edge=config['dest_edge'],
                     dest_progress=config['dest_progress'],
                     speed_factor=config.get('speed_factor', 1.0),
-                    forbidden_paths=history
+                    forbidden_paths=history,
+                    forced_path=forced # Pass to agent
                 )
                 self.rickshaws.append(new_agent)
         except (FileNotFoundError, json.JSONDecodeError):
@@ -171,7 +176,7 @@ class SimulationEngine:
         self.collision_count = 0
         self.collision_history = []
         self.current_iteration = 1
-        self.current_position_id = 1 # Reset global position ID on HARD RESET
+        self.current_position_id = 1 
         self.path_history = {} 
         print("--- SIMULATION RESET (Reloading from JSON) ---")
         self.load_scenario_from_disk()
@@ -180,8 +185,8 @@ class SimulationEngine:
         print(f"--- UPDATING POSITIONS (Starting new Trip) ---")
         
         self.path_history = {}
-        self.current_position_id += 1 # <--- INCREMENT POSITION
-        self.current_iteration = 1    # <--- RESET ITERATION
+        self.current_position_id += 1 
+        self.current_iteration = 1    
         
         new_configs = []
         occupied_dests = set()
@@ -228,7 +233,8 @@ class SimulationEngine:
                 "dest_node": dnode,
                 "dest_edge": dedge,
                 "dest_progress": dprog,
-                "speed_factor": cfg.get('speed_factor', 1.0)
+                "speed_factor": cfg.get('speed_factor', 1.0),
+                "forced_path": None # New trip, so reset forced paths
             }
             new_configs.append(new_cfg)
         
@@ -244,43 +250,59 @@ class SimulationEngine:
         record = f"Iter {self.current_iteration} Collisions: {self.collision_count}"
         self.collision_history.append(record)
         
-        # --- NEW LOGGING LOGIC ---
+        # Log Stats
         block_size = self.city.block_size
         agent_data_list = []
-        
         for agent in self.rickshaws:
             dist_meters = agent.distance_travelled * block_size
             time_seconds = agent.travel_time
-            
-            # Create row: [id, distance, time]
             agent_data_list.append([
                 agent.id,
                 round(dist_meters, 2),
                 round(time_seconds, 2)
             ])
-            
-        # Call the new logger function
         self.data_logger.log_complex_iteration(
             pos_id=self.current_position_id,
             iter_id=self.current_iteration,
             collision_count=self.collision_count,
             agent_data_list=agent_data_list
         )
-        # -------------------------
         
-        # 2. Save Paths Used
-        print(f"--- NEXT ITERATION (Fixed Points, New Paths) ---")
+        print(f"--- NEXT ITERATION (Evolutionary Pathing) ---")
+        
+        # 2. EVOLUTIONARY LOGIC
+        # We iterate over current active agents to see who crashed and who didn't.
         
         for agent in self.rickshaws:
-            if agent.chosen_path:
-                if agent.id not in self.path_history:
-                    self.path_history[agent.id] = []
-                self.path_history[agent.id].append(agent.chosen_path)
+            # Find the config for this agent
+            agent_config = next((c for c in self.scenario_configs if c['id'] == agent.id), None)
+            if not agent_config: continue
 
-        # 3. Reload from Disk
+            if agent.was_involved_in_crash:
+                # --- PUNISHMENT ---
+                # 1. Add current path to forbidden history so they don't pick it again
+                if agent.chosen_path:
+                    if agent.id not in self.path_history:
+                        self.path_history[agent.id] = []
+                    self.path_history[agent.id].append(agent.chosen_path)
+                
+                # 2. Clear forced path so they recalculate
+                agent_config['forced_path'] = None
+                print(f"Agent {agent.id} CRASHED. Forcing new path next iter.")
+            
+            else:
+                # --- REWARD ---
+                # 1. Save the current successful path as 'forced_path'
+                if agent.chosen_path and len(agent.chosen_path) > 0:
+                    agent_config['forced_path'] = agent.chosen_path
+                    # print(f"Agent {agent.id} SAFE. Keeping path.")
+
+        # 3. Save Configs & Reload
+        self.save_scenario_to_disk() # Write the 'forced_path' updates to JSON
+        
         self.collision_count = 0
         self.current_iteration += 1
-        self.load_scenario_from_disk()
+        self.load_scenario_from_disk() # Reloads agents; those with forced_path will use it.
 
     def _haversine_distance(self, pos1, pos2):
         lon1, lat1 = pos1[0], pos1[1]
@@ -317,10 +339,12 @@ class SimulationEngine:
                     crash = False
                     if not a1.is_crashed:
                         a1.is_crashed = True
+                        a1.was_involved_in_crash = True # <--- MARK AS CRASHED FOR ITERATION
                         a1.crash_timer = 5.0
                         crash = True
                     if not a2.is_crashed:
                         a2.is_crashed = True
+                        a2.was_involved_in_crash = True # <--- MARK AS CRASHED FOR ITERATION
                         a2.crash_timer = 5.0
                         crash = True
                     if crash: self.collision_count += 1
