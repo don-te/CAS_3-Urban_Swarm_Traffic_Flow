@@ -136,17 +136,18 @@ class SimulationEngine:
             print(f"Error saving scenario: {e}")
 
     def load_scenario_from_disk(self):
-        # Clean up existing load
-        for agent in self.rickshaws:
-            if agent.current_edge:
-                u, v = agent.current_edge
-                if self.city.G.has_edge(u, v) and self.city.G[u][v]['current_load'] > 0:
-                    self.city.G[u][v]['current_load'] -= 1
+        # --- FIX START: HARD RESET GRAPH LOADS ---
+        # Instead of asking agents to leave edges, we wipe the map clean.
+        # This guarantees Iteration 7 is mathematically identical to Iteration 6.
+        for u, v, data in self.city.G.edges(data=True):
+            data['current_load'] = 0
+        # --- FIX END ---
         
         self.rickshaws = []
         try:
             with open(self.scenario_file, 'r') as f:
                 self.scenario_configs = json.load(f)
+            # ... rest of the loading logic ...
                 
             for config in self.scenario_configs:
                 aid = config['id']
