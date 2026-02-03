@@ -1,4 +1,4 @@
-# city_graph.py
+# src/world/city.py
 import networkx as nx
 import math
 
@@ -55,7 +55,8 @@ class CityGraph:
         self.G.add_edge(v, u, weight=1.0, capacity=10, current_load=0, type=orientation)
 
     def get_plotting_data(self):
-        """Export graph data for PyDeck visualization."""
+        """Export graph data for visualizations."""
+        # Preserved for compatibility, though currently unused by main visualizer
         lines = []
         nodes = []
 
@@ -63,8 +64,6 @@ class CityGraph:
         for u, v, data in self.G.edges(data=True):
             start_pos = self.G.nodes[u]['pos'] # (lon, lat)
             end_pos = self.G.nodes[v]['pos']
-            
-            # Color logic: Grey = Empty, Red = Jammed (Placeholder for now)
             color = [100, 100, 100] 
             
             lines.append({
