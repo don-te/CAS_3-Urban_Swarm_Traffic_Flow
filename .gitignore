@@ -1,2 +1,4 @@
 __pycache__
 env
+agent_scenario.json
+simulation_data.csv
