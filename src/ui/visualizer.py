@@ -10,7 +10,7 @@ class Visualizer:
     def __init__(self, bounds):
         pygame.init()
         self.screen = pygame.display.set_mode((c.SCREEN_WIDTH + 300, c.SCREEN_HEIGHT), pygame.RESIZABLE)
-        pygame.display.set_caption("Urban Swarm")
+        pygame.display.set_caption("Self-Organization in Multi-Agent Systems")
         
         self.sim_surface = pygame.Surface((c.SCREEN_WIDTH, c.SCREEN_HEIGHT))
         self.bounds = bounds

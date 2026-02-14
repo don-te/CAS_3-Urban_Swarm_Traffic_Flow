@@ -36,12 +36,13 @@ class SimulationEngine:
 
     def set_agent_count(self, target_count):
         self.rickshaws = self.scenario_manager.set_agent_count(target_count, self.rickshaws)
+        self.current_position_id = 0 # Reset so next update_positions starts at 1
 
     def reset_simulation(self):
         self.collision_count = 0
         self.collision_history = []
         self.current_iteration = 1
-        self.current_position_id = 1 
+        self.current_position_id = 0 # Reset so next update_positions starts at 1 
         self.scenario_manager.path_history = {} 
         print("--- SIMULATION RESET ---")
         self._reload_agents()

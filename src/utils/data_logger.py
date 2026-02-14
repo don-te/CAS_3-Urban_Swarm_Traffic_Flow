@@ -55,8 +55,8 @@ class DataLogger:
         """
         Logs data for all agents in the current run iteration.
         """
-        run_id = f"{pos_id}_{iter_id}"
         agent_count = len(agents)
+        run_id = f"{agent_count}_{pos_id}_{iter_id}"
         
         data_rows = []
         
