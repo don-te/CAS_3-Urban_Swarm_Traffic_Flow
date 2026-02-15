@@ -3,9 +3,9 @@ import subprocess
 import sys
 import os
 
-st.set_page_config(page_title="Traffic Automation", layout="centered")
+st.set_page_config(page_title="Automation wizard", layout="centered")
 
-st.title("Traffic Simulation Automation")
+st.title("Self-Organization in Multi-Agent Systems :blue[(Automation wizard)]")
 st.markdown("Configure the automation parameters and start the simulation.")
 
 # Inputs
