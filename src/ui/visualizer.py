@@ -1,9 +1,10 @@
-# visualizer.py
+# src/ui/visualizer.py
 import pygame
 import math
-import config as c
-from utils import map_coords_to_screen, draw_triangle
-from ui import Slider, Button
+import src.config as c
+from src.utils.math_utils import map_coords_to_screen
+from src.ui.drawing import draw_triangle
+from src.ui.interface import Slider, Button
 
 class Visualizer:
     def __init__(self, bounds):
@@ -16,7 +17,6 @@ class Visualizer:
         
         self.is_paused = True
         self.sim_speed = 1.0
-        # self.path_constant = True  <-- REMOVED
         
         # UI Setup
         self.sidebar_width = 250
@@ -79,8 +79,6 @@ class Visualizer:
             self.play_btn.text = "PAUSE"
             self.play_btn.color = (200, 60, 60)
             self.play_btn.hover_color = (230, 80, 80)
-
-    # Removed toggle_path_mode
 
     def handle_resize(self, event):
         self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
@@ -206,7 +204,7 @@ class Visualizer:
         self.play_btn.draw(self.screen)
         self.next_iter_btn.draw(self.screen)
         self.reset_btn.draw(self.screen)
-        self.update_pos_btn.draw(self.screen) # Changed from path_btn
+        self.update_pos_btn.draw(self.screen) 
         
         self.agent_slider.draw(self.screen)
         self.speed_slider.draw(self.screen)

@@ -1,9 +1,9 @@
 # main.py
 import pygame
 import sys
-import config as c
-from logic_engine import SimulationEngine
-from visualizer import Visualizer
+import src.config as c
+from src.core.engine import SimulationEngine
+from src.ui.visualizer import Visualizer
 
 def main():
     engine = SimulationEngine()
@@ -30,7 +30,6 @@ def main():
                 if event.key == pygame.K_SPACE: vis.toggle_pause()
 
             # --- UI EVENT UNPACKING ---
-            # Updated signature to receive update_pos_triggered
             new_agent_count, next_iter, reset_triggered, update_pos_triggered = vis.handle_ui_events(event)
             
             if reset_triggered:
