@@ -102,3 +102,33 @@ CAS_3-Urban_Swarm_Traffic_Flow/
     │   └── math_utils.py    # Haversine & Screen mapping math
     └── world/
         └── city.py          # Graph generation (Manhattan Grid)
+```
+---
+## 📦 Installation
+
+### Prerequisites
+* Python 3.8 or higher
+* pip (Python package installer)
+
+### Setup Steps
+1.  **Clone the Repository**
+    ```bash
+    git clone <repository-url>
+    cd CAS_3-Urban_Swarm_Traffic_Flow
+    ```
+
+2.  **Install Dependencies**
+    The project relies on `pygame` for visualization, `networkx` for graph logic, and `streamlit` for the automation dashboard.
+    ```bash
+    pip install -r requirements.txt
+    ```
+    *Core libraries installed:* `networkx`, `pydeck`, `pandas`, `streamlit`, `pygame`.
+
+---
+
+## 🛠 Usage Guide
+
+### 1. Visual Simulation (GUI)
+Run the main visualizer to watch the swarm emergence in real-time.
+```bash
+python main.py
